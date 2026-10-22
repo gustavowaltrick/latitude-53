@@ -4,7 +4,7 @@
   --bg:#ffffff; --bg-alt:#f5f5f7; --ink:#1d1d1f; --ink-2:#6e6e73; --ink-3:#86868b;
   --line:#d2d2d7; --line-soft:#e8e8ed; --accent:#0071e3; --accent-ink:#0066cc; --accent-soft:#e8f2fd;
   --good:#248a3d; --good-soft:#e7f5ea; --warn:#b25000; --warn-soft:#fdf1e5; --bad:#d70015; --bad-soft:#fdebed;
-  --land:#e4e4e9; --land-line:#ffffff; --visited:#0071e3; --planned:#a9cdf6; --state-soft:#cfe3fb; --nav:rgba(251,251,253,.8);
+  --land:#e4e4e9; --land-line:#ffffff; --visited:#34c759; --visited-pin:#1f7a35; --planned:#a9cdf6; --state-soft:#d3f1db; --nav:rgba(251,251,253,.8);
   --display:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;
   --text:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;
   --mono:"SF Mono",ui-monospace,Menlo,Consolas,monospace;
@@ -159,7 +159,7 @@ button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
 .place .top{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
 .place .name{font-weight:600;font-size:19px;line-height:1.2}
 .status{font-size:11px;font-weight:600;border-radius:980px;padding:2px 8px;white-space:nowrap}
-.status.visitado{background:var(--accent-soft);color:var(--accent-ink)}
+.status.visitado{background:var(--good-soft);color:var(--good)}
 .status.planejado{background:var(--bg-alt);color:var(--ink-2);border:1px solid var(--line)}
 .place .note{font-size:15px;color:var(--ink-2);white-space:pre-line}
 .thumbs{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}

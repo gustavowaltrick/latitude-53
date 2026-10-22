@@ -520,7 +520,7 @@ function drawMap(){
   const tip = document.createElement("div"); tip.className="tip"; tip.hidden=true; el.appendChild(tip);
   const mk = g.append("g").selectAll("circle").data(pts).join("circle")
     .attr("cx",l=>proj([l.lng,l.lat])[0]).attr("cy",l=>proj([l.lng,l.lat])[1]).attr("r",4)
-    .attr("fill",l=>l.status==="planejado"?"#ffffff":"#1d1d1f").attr("stroke",l=>l.status==="planejado"?"#0071e3":"#ffffff").attr("stroke-width",1.5).attr("vector-effect","non-scaling-stroke")
+    .style("fill",l=>l.status==="planejado"?"#ffffff":"var(--visited-pin)").attr("stroke",l=>l.status==="planejado"?"#0071e3":"#ffffff").attr("stroke-width",1.5).attr("vector-effect","non-scaling-stroke")
     .on("mouseenter",(ev,l)=>{ const r=el.getBoundingClientRect(); tip.textContent=(l.cidade||"")+(l.estado?", "+l.estado:""); tip.style.left=(ev.clientX-r.left)+"px"; tip.style.top=(ev.clientY-r.top)+"px"; tip.hidden=false; })
     .on("mouseleave",()=>{tip.hidden=true;});
   const zoom = d3.zoom().scaleExtent([1,40]).translateExtent([[0,0],[W,H]]).on("zoom",ev=>{ g.attr("transform",ev.transform); mk.attr("r",4/Math.sqrt(ev.transform.k)); });
