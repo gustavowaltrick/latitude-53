@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Latitude 53</title>
+<meta name="description" content="Roteiro, mapa e guia da mudança de Gustavo e Priscila da Bahia para a Irlanda.">
+<meta name="theme-color" content="#fbfbfd">
+<meta property="og:title" content="Latitude 53">
+<meta property="og:description" content="Da Bahia para a Irlanda, passando por Lisboa e Amsterdam.">
+<meta property="og:image" content="capa.jpg">
+<meta property="og:type" content="website">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Latitude 53">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<style>html{-webkit-text-size-adjust:100%}body{margin:0}img{max-width:100%}[hidden]{display:none!important}:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}</style>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app"></div>
+<noscript><p style="padding:24px;font-family:system-ui">Ative o JavaScript para ver o roteiro.</p></noscript>
+<script src="world.js"></script>
+<script src="maplib.js"></script>
+<script src="states.js"></script>
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+if("serviceWorker" in navigator){ window.addEventListener("load",function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); }); }
+</script>
+</body>
+</html>
