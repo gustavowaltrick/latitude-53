@@ -3,7 +3,7 @@
 
 Uso:  python3 build/build.py <pasta_exportada> [<pasta_com_fotos>]
 A pasta exportada tem as subpastas dias/, itens/, lugares/, guia/ e config/site.json,
-no formato salvo pelo ArtifactData (out_dir). A pasta de fotos tem <asset_id>.jpg/png/webp.
+no formato JSON exportado do banco do site privado. A pasta de fotos tem <asset_id>.jpg/png/webp.
 Só entram roteiro, mapa e guia: custos, reservas, checklists e gravações nunca são lidos.
 O único dado de custo é o resumo por categoria que o próprio site privado grava em config/site
 (resumoCustos), e ele só sai quando custosPublico está ligado.
