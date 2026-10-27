@@ -485,3 +485,71 @@ main.enter .place-chip .flag{animation:wave 1.4s var(--spring) .4s backwards}
   .ambient i{animation:none!important}
   .tile:hover,.place:hover,.gsec:hover,.group:hover,.hoje-card:hover{transform:none}
 }
+
+/* =====================================================================
+   DARK THEME — set by the theme button (data-theme="dark" on <html>).
+   Same glass language: smoked glass over a deep, slow ambient field.
+   ===================================================================== */
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#16181d; --bg-alt:#1d2027; --ink:#f5f5f7; --ink-2:#a8a8ae; --ink-3:#7c7c84;
+  --line:#3a3d45; --line-soft:#2b2e35; --accent:#0a84ff; --accent-ink:#4da3ff; --accent-soft:rgba(10,132,255,.18);
+  --good:#30d158; --good-soft:rgba(48,209,88,.16); --warn:#ff9f0a; --warn-soft:rgba(255,159,10,.16); --bad:#ff453a; --bad-soft:rgba(255,69,58,.16);
+  --land:#2c3038; --land-line:#14171c; --visited:#30d158; --visited-pin:#7ff09a; --state-soft:#1f4d2c;
+  --amb-base:#0b0e14;
+  --amb-1:rgba(40,110,255,.42); --amb-2:rgba(48,209,88,.26); --amb-3:rgba(255,130,70,.26); --amb-4:rgba(120,90,255,.3);
+  --glass-fill:linear-gradient(145deg,rgba(58,62,72,.62),rgba(30,33,40,.42));
+  --glass-fill-strong:linear-gradient(145deg,rgba(62,66,76,.85),rgba(34,37,44,.7));
+  --glass-edge:rgba(255,255,255,.12);
+  --glass-hi:inset 0 1px 0 rgba(255,255,255,.16), inset 0 -1px 0 rgba(255,255,255,.04), inset 0 0 0 1px rgba(255,255,255,.05);
+  --glass-drop:0 18px 40px -18px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.25);
+  --dark-glass:rgba(240,240,245,.16);
+}
+:root[data-theme="dark"] .tile::before,:root[data-theme="dark"] .place::before,:root[data-theme="dark"] .gsec::before,:root[data-theme="dark"] .group::before,
+:root[data-theme="dark"] .col::before,:root[data-theme="dark"] .hoje-card::before,:root[data-theme="dark"] .day::before,:root[data-theme="dark"] .empty-state::before{
+  background:radial-gradient(420px circle at var(--mx,18%) var(--my,-10%),rgba(255,255,255,.12),rgba(255,255,255,0) 45%)}
+:root[data-theme="dark"] .map-shell{background:linear-gradient(145deg,rgba(50,54,64,.6),rgba(26,29,36,.4))}
+:root[data-theme="dark"] .lnav .wrap{background:linear-gradient(145deg,rgba(56,60,70,.62),rgba(28,31,38,.48));box-shadow:var(--glass-hi),0 14px 34px -16px rgba(0,0,0,.7)}
+:root[data-theme="dark"] .tab-pill,
+:root[data-theme="dark"] .segbar button[aria-pressed="true"]{background:linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.1));box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 4px 12px -4px rgba(0,0,0,.5)}
+:root[data-theme="dark"] .seg,:root[data-theme="dark"] .segbar{background:linear-gradient(145deg,rgba(56,60,70,.6),rgba(28,31,38,.4))}
+:root[data-theme="dark"] .seg button[aria-pressed="true"]{background:rgba(245,245,247,.92);color:#16181d}
+:root[data-theme="dark"] .btn.secondary,:root[data-theme="dark"] .btn.plain{background:linear-gradient(145deg,rgba(70,74,84,.7),rgba(40,43,50,.5));border-color:rgba(255,255,255,.14)}
+:root[data-theme="dark"] .btn:not(.plain):not(.secondary):not(.danger){background:linear-gradient(180deg,#2a95ff,#0a6fe0)}
+:root[data-theme="dark"] .icon-btn:hover{background:rgba(255,255,255,.1)}
+:root[data-theme="dark"] .take,:root[data-theme="dark"] .band:not(.alt) .take{background:rgba(60,64,74,.55);border-color:rgba(255,255,255,.1);box-shadow:inset 0 1px 0 rgba(255,255,255,.1),0 6px 16px -10px rgba(0,0,0,.6)}
+:root[data-theme="dark"] .cover::after{box-shadow:inset 0 1px 0 rgba(255,255,255,.18),inset 0 0 0 1px rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(255,255,255,.06),transparent 30%)}
+:root[data-theme="dark"] dialog.sheet{background:linear-gradient(160deg,rgba(48,52,62,.9),rgba(28,31,38,.82));box-shadow:var(--glass-hi),0 40px 90px -30px rgba(0,0,0,.8)}
+:root[data-theme="dark"] dialog.sheet::backdrop{background:rgba(0,0,0,.4)}
+:root[data-theme="dark"] .field input[type=text],:root[data-theme="dark"] .field input[type=number],:root[data-theme="dark"] .field input[type=date],
+:root[data-theme="dark"] .field input[type=time],:root[data-theme="dark"] .field input[type=url],:root[data-theme="dark"] .field select,:root[data-theme="dark"] .field textarea{background:rgba(0,0,0,.25);border-color:rgba(255,255,255,.12)}
+:root[data-theme="dark"] .field input:focus,:root[data-theme="dark"] .field select:focus,:root[data-theme="dark"] .field textarea:focus{background:rgba(0,0,0,.35)}
+:root[data-theme="dark"] .ac{background:linear-gradient(160deg,rgba(50,54,64,.96),rgba(30,33,40,.9))}
+:root[data-theme="dark"] .code,:root[data-theme="dark"] .inline-field input,:root[data-theme="dark"] .filters select{background:rgba(0,0,0,.25);box-shadow:0 0 0 1px rgba(255,255,255,.1)}
+:root[data-theme="dark"] tbody tr:hover td{background:rgba(255,255,255,.05)}
+:root[data-theme="dark"] .tag,:root[data-theme="dark"] .status,:root[data-theme="dark"] .state-pill{box-shadow:none}
+:root[data-theme="dark"] .tag{background:rgba(255,255,255,.08);color:var(--ink-2)}
+:root[data-theme="dark"] .tag.transporte{background:rgba(120,130,255,.2);color:#b3b9ff}
+:root[data-theme="dark"] .tag.atracao{background:rgba(10,132,255,.2);color:#8cc4ff}
+:root[data-theme="dark"] .tag.comida{background:rgba(255,159,10,.18);color:#ffc266}
+:root[data-theme="dark"] .tag.fora{background:rgba(191,90,242,.2);color:#d9a6f7}
+:root[data-theme="dark"] .tag.gravacao{background:rgba(255,55,95,.2);color:#ff8fab}
+:root[data-theme="dark"] .take .fmt{color:#ff8fab}
+:root[data-theme="dark"] .status.planejado{background:rgba(255,255,255,.06)}
+:root[data-theme="dark"] .banner{background:rgba(255,159,10,.14)}
+:root[data-theme="dark"] .banner.info{background:rgba(10,132,255,.16)}
+:root[data-theme="dark"] .item{border-top-color:rgba(255,255,255,.07)}
+:root[data-theme="dark"] .prog,:root[data-theme="dark"] .bar .track{background:rgba(255,255,255,.08)}
+:root[data-theme="dark"] .fab,:root[data-theme="dark"] .toast{border-color:rgba(255,255,255,.18);color:#fff}
+:root[data-theme="dark"] .tip,:root[data-theme="dark"] .pick-hint,:root[data-theme="dark"] .photo-edit button{background:rgba(245,245,247,.92);color:#16181d}
+
+/* theme switch button */
+.theme-btn svg{transition:transform .6s var(--spring)}
+.theme-btn:active svg{transform:rotate(-40deg) scale(.85)}
+.theme-btn .moon{display:none}
+:root[data-theme="dark"] .theme-btn .sun{display:none}
+:root[data-theme="dark"] .theme-btn .moon{display:block}
+/* circular reveal when switching themes (browsers with View Transitions) */
+::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal}
+::view-transition-new(root){animation:themeReveal .7s cubic-bezier(.3,.7,.2,1)}
+@keyframes themeReveal{from{clip-path:circle(0 at var(--tx,90%) var(--ty,40px))}to{clip-path:circle(150vmax at var(--tx,90%) var(--ty,40px))}}

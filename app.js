@@ -101,7 +101,21 @@ function subscribe(){
 }
 
 /* ---------- boot ---------- */
+function getTheme(){ try{ return localStorage.getItem("lat53-theme")||""; }catch(e){ return ""; } }
+function applyTheme(t){ const r=document.documentElement; if(t==="dark") r.setAttribute("data-theme","dark"); else r.setAttribute("data-theme","light"); }
+function toggleTheme(btn){
+  const next = document.documentElement.getAttribute("data-theme")==="dark" ? "light" : "dark";
+  try{ localStorage.setItem("lat53-theme",next); }catch(e){}
+  const swap=()=>{ applyTheme(next); const m=document.querySelector('meta[name="theme-color"]'); if(m) m.setAttribute("content", next==="dark"?"#0b0e14":"#fbfbfd"); };
+  if(document.startViewTransition && !reduceMotion() && btn){
+    const r=btn.getBoundingClientRect(); const root=document.documentElement;
+    root.style.setProperty("--tx",(r.left+r.width/2)+"px"); root.style.setProperty("--ty",(r.top+r.height/2)+"px");
+    try{ document.startViewTransition(swap); return; }catch(e){}
+  }
+  swap();
+}
 function installGlass(){
+  { const saved=getTheme(); if(saved) applyTheme(saved); else if(!document.documentElement.getAttribute("data-theme")) applyTheme("light"); }
   if(!document.querySelector(".ambient")){ const a=document.createElement("div"); a.className="ambient"; a.setAttribute("aria-hidden","true"); a.innerHTML="<i></i><i></i><i></i><i></i>"; document.body.insertBefore(a, document.body.firstChild); }
   let raf=0, last=null;
   document.addEventListener("pointermove",e=>{
@@ -177,9 +191,10 @@ function render(){
   document.title = name;
   const tabs = VIEWS.filter(v=>!(priv && PRIVATE_VIEWS.includes(v[0])))
     .map(([k,l])=>`<a href="#${k}" ${S.view===k?'aria-current="page"':""}>${l}</a>`).join("");
-  let btns = "";
+  const themeBtn = `<button class="icon-btn theme-btn" id="toggle-theme" type="button" aria-label="Alternar tema claro e escuro" title="Tema claro ou escuro"><svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg><svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.6A8.2 8.2 0 0 1 9.4 4a8.2 8.2 0 1 0 10.6 10.6z"/></svg></button>`;
+  let btns = themeBtn;
   if(S.canEdit && !PUB){
-    btns = `<button class="ghost-btn" id="toggle-pub" type="button">${S.publicView?"Sair da visão pública":"Ver como público"}</button>
+    btns = themeBtn + `<button class="ghost-btn" id="toggle-pub" type="button">${S.publicView?"Sair da visão pública":"Ver como público"}</button>
       <button class="icon-btn" id="open-settings" type="button" aria-label="Ajustes do site">${gearSvg()}</button>`;
   }
   let banner = "";
@@ -226,6 +241,7 @@ function renderView(){
 function gearSvg(){ return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>`; }
 function bindShell(){
   const t=$("#toggle-pub"); if(t) t.onclick=()=>{S.publicView=!S.publicView; render();};
+  const th=$("#toggle-theme"); if(th) th.onclick=()=>toggleTheme(th);
   const g=$("#open-settings"); if(g) g.onclick=openSettings;
   const fb=$("#fab-gasto"); if(fb) fb.onclick=()=>quickExpense();
 }
