@@ -1,0 +1,71 @@
+rules_version = '2';
+// Regras da comunidade Latitude 53.
+// Perfis, comentários e quem segue quem são públicos para leitura.
+// Cada pessoa só altera o que é dela. Autores (coleção "admins") podem apagar comentários.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isMe(uid) { return signedIn() && request.auth.uid == uid; }
+    function verified() {
+      return signedIn() && (request.auth.token.email_verified == true
+        || request.auth.token.firebase.sign_in_provider == 'google.com');
+    }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    function str(v, max) { return v is string && v.size() <= max; }
+
+    match /admins/{uid} {
+      allow read: if true;
+      allow write: if false;            // criado à mão no console do Firebase
+    }
+
+    match /profiles/{uid} {
+      allow read: if true;
+      allow create, update: if isMe(uid)
+        && request.resource.data.keys().hasOnly(['nome','insta','cidade','bio','paises','foto','criadoEm'])
+        && str(request.resource.data.nome, 60) && request.resource.data.nome.size() > 0
+        && str(request.resource.data.get('insta',''), 30)
+        && str(request.resource.data.get('cidade',''), 60)
+        && str(request.resource.data.get('bio',''), 280)
+        && str(request.resource.data.get('foto',''), 500)
+        && request.resource.data.get('paises', []) is list
+        && request.resource.data.get('paises', []).size() <= 200;
+      allow delete: if isMe(uid);
+    }
+
+    match /follows/{id} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['from','to','em'])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.to != request.auth.uid
+        && id == request.auth.uid + '_' + request.resource.data.to;
+      allow delete: if signedIn() && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow update: if false;
+    }
+
+    match /comments/{id} {
+      allow read: if true;
+      allow create: if verified()
+        && request.resource.data.keys().hasOnly(['alvo','alvoTitulo','uid','nome','texto','em'])
+        && request.resource.data.uid == request.auth.uid
+        && str(request.resource.data.alvo, 80) && request.resource.data.alvo.matches('^(dia|lugar):[A-Za-z0-9_-]+$')
+        && str(request.resource.data.alvoTitulo, 120)
+        && str(request.resource.data.nome, 60)
+        && str(request.resource.data.texto, 1000) && request.resource.data.texto.size() > 0
+        && request.resource.data.em == request.time;
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow update: if false;
+    }
+
+    match /users/{uid}/salvos/{id} {
+      allow read, delete: if isMe(uid);
+      allow create, update: if isMe(uid)
+        && request.resource.data.keys().hasOnly(['alvo','titulo','em'])
+        && str(request.resource.data.alvo, 80) && str(request.resource.data.titulo, 120);
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

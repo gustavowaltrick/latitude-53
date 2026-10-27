@@ -192,7 +192,7 @@ function render(){
   const tabs = VIEWS.filter(v=>!(priv && PRIVATE_VIEWS.includes(v[0])))
     .map(([k,l])=>`<a href="#${k}" ${S.view===k?'aria-current="page"':""}>${l}</a>`).join("");
   const themeBtn = `<button class="icon-btn theme-btn" id="toggle-theme" type="button" aria-label="Alternar tema claro e escuro" title="Tema claro ou escuro"><svg class="sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/></svg><svg class="moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.6A8.2 8.2 0 0 1 9.4 4a8.2 8.2 0 1 0 10.6 10.6z"/></svg></button>`;
-  let btns = themeBtn;
+  let btns = EXT.navExtra.map(f=>{ try{ return f()||""; }catch(e){ return ""; } }).join("") + themeBtn;
   if(S.canEdit && !PUB){
     btns = themeBtn + `<button class="ghost-btn" id="toggle-pub" type="button">${S.publicView?"Sair da visão pública":"Ver como público"}</button>
       <button class="icon-btn" id="open-settings" type="button" aria-label="Ajustes do site">${gearSvg()}</button>`;
@@ -219,13 +219,16 @@ function render(){
   bindShell();
   afterRender();
   try{ choreograph(entering); }catch(e){}
+  EXT.after.forEach(f=>{ try{ f(entering); }catch(e){ showFatal("Extensão: "+((e&&e.message)||e)); } });
 }
 function safeView(){
   try{ return renderView(); }
   catch(e){ setTimeout(()=>showFatal((e&&e.message)||e),0); return `<section class="band hero"><div class="wrap"><h1 class="h2">Esta aba não abriu.</h1><p class="lead">Tente outra aba ou recarregue a página.</p></div></section>`; }
 }
 function loadingView(){ return `<section class="band hero"><div class="wrap"><p class="eyebrow">Carregando</p><h1 class="h1">Abrindo o diário de viagem</h1></div></section>`; }
+const EXT = { views:{}, after:[], navExtra:[] };
 function renderView(){
+  if(EXT.views[S.view]) return EXT.views[S.view]();
   switch(S.view){
     case "hoje": return vHoje();
     case "roteiro": return vRoteiro();
@@ -310,7 +313,7 @@ function vRoteiro(){
 function dayHtml(d){
   const f = fmtDay(d.data||"2026-12-22");
   const its = itemsOf(d.id);
-  return `<article class="day" id="dia-${esc(d.id)}">
+  return `<article class="day" id="dia-${esc(d.id)}" data-day="${esc(d.id)}" data-title="${esc(d.titulo||"")}">
     <div class="date-col"><div class="dnum">${f.n}</div><div class="dmeta">${esc(f.wd)}<br>${esc(f.mo)}</div></div>
     <div class="day-body">
       <span class="place-chip"><span class="flag">${flag(d.paisA2)}</span>${esc(d.cidade||"")}${d.cidade&&d.paisA2?" · ":""}${esc(d.paisA2?countryName(d.paisA2):"")}</span>
@@ -418,7 +421,7 @@ function countryBlock(a2,list){
 function placeCard(l){
   const fotos = (l.fotos||[]).map((id,i)=>imgSrc(id,(l.fotosData||[])[i])).filter(Boolean);
   const links = (l.links||[]).filter(x=>safeUrl(x.url));
-  return `<div class="place">
+  return `<div class="place" data-place="${esc(l.id)}" data-title="${esc(l.cidade||"")}">
     <div class="top"><div><div class="name">${esc(l.cidade||"Lugar")}</div>${l.quando?`<div class="tiny">${esc(l.quando)}${l.juntos===false?" · só um de nós":""}</div>`:""}</div>
     <span class="status ${l.status==="planejado"?"planejado":"visitado"}">${l.status==="planejado"?"No roteiro":"Visitado"}</span></div>
     ${l.nota?`<div class="note">${esc(l.nota)}</div>`:""}
@@ -914,5 +917,12 @@ async function exportPublic(){
   }catch(e){ if(e && e.code==="cancelled") return; toast("Não deu para gerar o arquivo."); }
 }
 
+window.LAT53 = {
+  S, render, toast, sheet, esc, safeUrl, flag, countryName, countryOptions, fmtDay, nrm: t=>nrm(t), reduceMotion,
+  addView(key,label,fn,opts){ opts=opts||{}; EXT.views[key]=fn; if(!opts.hidden && !VIEWS.some(v=>v[0]===key)){ if(opts.after){ const i=VIEWS.findIndex(v=>v[0]===opts.after); VIEWS.splice(i<0?VIEWS.length:i+1,0,[key,label]); } else VIEWS.push([key,label]); } },
+  onAfterRender(f){ EXT.after.push(f); },
+  addNav(f){ EXT.navExtra.push(f); },
+  go(view){ if(VIEWS.some(v=>v[0]===view)){ if(location.hash!=="#"+view) location.hash=view; else { S.view=view; render(); } } else { S.view=view; render(); window.scrollTo(0,0); } }
+};
 if(document.readyState==="loading") document.addEventListener("DOMContentLoaded",boot); else boot();
 })();
