@@ -20,6 +20,7 @@ function dbError(e, what){
   const code = e && e.code;
   const msg = code==="permission-denied" ? `Sem permissão para ${what}. Confira se as regras do Firestore foram publicadas.`
     : code==="timeout" || code==="unavailable" ? `Não consegui falar com o banco de dados para ${what}. Confira a internet; se continuar, o banco Firestore pode não ter sido criado.`
+    : code==="not-saved" ? `O servidor não confirmou o salvamento. Use "Verificar conexão" no seu perfil e me mande o resultado.`
     : code==="not-found" ? `Banco de dados não encontrado ao ${what}. Confira se o Firestore foi criado como "(default)".`
     : `Não deu para ${what}${code?" ("+code+")":""}.`;
   toast(msg); C.lastError = msg + (code?" ["+code+"]":"");
@@ -55,7 +56,7 @@ function start(){
       C.verified = !!u.emailVerified;
       const ref=db.collection("profiles").doc(u.uid);
       try{
-        const snap=await ref.get();
+        const snap=await timed(ref.get({source:"server"}));
         if(!snap.exists){ await timed(ref.set(cleanProfile({nome:u.displayName||(u.email||"").split("@")[0], foto:googlePhoto(u), insta:"", cidade:"", bio:"", paises:[], criadoEm:TS()}))); }
       }catch(e){ dbError(e,"criar seu perfil"); }
       C.unsub.push(ref.onSnapshot(s=>{ C.me=s.exists?Object.assign({id:u.uid},s.data()):null; if(C.me){ C.profiles[u.uid]=C.me; if(C.members){ const i=C.members.findIndex(m=>m.id===u.uid); if(i>=0) C.members[i]=C.me; else C.members.unshift(C.me); } } L.render(); },()=>{}));
@@ -304,6 +305,7 @@ function bindCommunity(){
     if(e.target.closest("[data-logout]")){ await auth.signOut(); toast("Você saiu da conta"); L.go("comunidade"); return; }
     if(e.target.closest("[data-del-account]")) return deleteAccount(e.target.closest("[data-del-account]"));
     if(e.target.closest("[data-verify]")) return resendVerify();
+    if(e.target.closest("[data-diag]")) return runDiag();
     if(e.target.closest("[data-reload]")){ await C.user.reload(); C.verified=!!auth.currentUser.emailVerified; if(C.verified){ await C.user.getIdToken(true); toast("E-mail confirmado!"); } else toast("Ainda não confirmado. Abra o link do e-mail."); L.render(); return; }
   });
 }
@@ -350,7 +352,7 @@ function vPerfil(){
     ${mine?`<h2 class="h3 hoje-h">Salvos</h2>${salvos.length?`<div class="feed">${salvos.map(s=>`<div class="feed-item"><div class="c-body"><button type="button" class="link-btn" data-alvo="${esc(s.alvo)}">${esc(s.titulo||s.alvo)}</button><span class="tiny"> · ${s.alvo.startsWith("dia:")?"Roteiro":"Mapa"}</span></div></div>`).join("")}</div>`:`<p class="small muted">Toque em Salvar num dia do Roteiro ou num lugar do Mapa para guardar aqui.</p>`}`:""}
     <h2 class="h3 hoje-h">Comentários</h2>
     ${seus.length?`<div class="feed">${seus.map(c=>`<div class="feed-item"><div class="c-body"><div class="c-meta"><span class="tiny">em <button type="button" class="link-btn tiny" data-alvo="${esc(c.alvo)}">${esc(c.alvoTitulo||"um lugar")}</button> · ${esc(when(c.em))}</span></div><div class="c-text">${esc(c.texto)}</div></div></div>`).join("")}</div>`:`<p class="small muted">Nenhum comentário ainda.</p>`}
-    ${mine?`<p style="margin-top:56px" class="tiny"><button type="button" class="link-btn tiny" data-del-account>Excluir minha conta</button> · <button type="button" class="link-btn tiny" onclick="LAT53.go('privacidade')">Privacidade</button></p>`:""}
+    ${mine?`<div class="diag" id="diag-box">${C.diag?C.diag:""}</div><p style="margin-top:56px" class="tiny"><button type="button" class="link-btn tiny" data-diag>Verificar conexão com o banco</button> · <button type="button" class="link-btn tiny" data-del-account>Excluir minha conta</button> · <button type="button" class="link-btn tiny" onclick="LAT53.go('privacidade')">Privacidade</button></p>`:""}
   </div></section>`;
 }
 function loadFollowCounts(uid){
@@ -412,12 +414,36 @@ function editProfile(){
     const btn=$d("#p-save"); btn.disabled=true; btn.textContent="Salvando…"; err.hidden=true;
     try{
       await timed(db.collection("profiles").doc(C.user.uid).set(data,{merge:true}));
+      const back = await timed(db.collection("profiles").doc(C.user.uid).get({source:"server"}));
+      if(!back.exists || back.data().nome!==data.nome) throw {code:"not-saved"};
       if(nome!==C.user.displayName) C.user.updateProfile({displayName:nome}).catch(()=>{});
       C.profiles[C.user.uid]=Object.assign({id:C.user.uid},C.me||{},data);
       close(); toast("Perfil salvo"); L.render();
     }catch(x){ dbError(x,"salvar o perfil"); err.textContent=C.lastError; err.hidden=false; btn.disabled=false; btn.textContent="Salvar"; }
   };
   if(typeof dlg.showModal==="function"){ try{ dlg.showModal(); }catch(e){ dlg.setAttribute("open",""); dlg.classList.add("no-modal"); } } else { dlg.setAttribute("open",""); dlg.classList.add("no-modal"); }
+}
+async function runDiag(){
+  const out=[]; const line=(ok,t)=>out.push(`<li class="${ok?"ok":"bad"}">${ok?"✓":"✗"} ${esc(t)}</li>`);
+  const show=()=>{ C.diag=`<strong>Diagnóstico</strong><ul>${out.join("")}</ul><span class="tiny">Projeto ${esc(CFG.projectId)} · ${esc(new Date().toLocaleString("pt-BR"))}</span>`; const b=document.getElementById("diag-box"); if(b) b.innerHTML=C.diag; };
+  out.push(`<li>Testando…</li>`); show(); out.length=0;
+  const u=C.user;
+  line(!!u, u ? `Conta conectada (${u.providerData.map(p=>p.providerId).join(", ")||"e-mail"}), e-mail ${u.emailVerified?"confirmado":"NÃO confirmado"}` : "Nenhuma conta conectada");
+  const code=e=>(e&&e.code)||String(e&&e.message||e);
+  try{ const q=await timed(db.collection("admins").get({source:"server"}),10000); line(true,`Leitura do banco funcionando (${q.size} autor${q.size===1?"":"es"} cadastrado${q.size===1?"":"s"})`); if(u) line(q.docs.some(d=>d.id===u.uid), q.docs.some(d=>d.id===u.uid)?"Você tem o selo Autor":`Você ainda não tem o selo Autor (seu UID: ${u.uid})`); }
+  catch(e){ line(false,`Leitura do banco falhou: ${code(e)}`); }
+  if(u){
+    const ref=db.collection("profiles").doc(u.uid);
+    try{ const d=await timed(ref.get({source:"server"}),10000); line(d.exists, d.exists?`Seu perfil existe no servidor (nome: ${d.data().nome})`:"Seu perfil NÃO existe no servidor"); }
+    catch(e){ line(false,`Leitura do seu perfil falhou: ${code(e)}`); }
+    try{
+      const cur=(C.me&&C.me.nome)||u.displayName||"Viajante";
+      await timed(ref.set(cleanProfile(Object.assign({}, C.me||{nome:cur,paises:[]}, {nome:cur})),{merge:true}),10000);
+      const d=await timed(ref.get({source:"server"}),10000);
+      line(d.exists,"Gravação de teste no perfil confirmada pelo servidor");
+    }catch(e){ line(false,`Gravação no perfil falhou: ${code(e)}`); }
+  }
+  show();
 }
 async function deleteAccount(btn){
   if(!btn.dataset.confirm){ btn.dataset.confirm=1; btn.textContent="Toque de novo para excluir sua conta, seus comentários e seus salvos. Não dá para desfazer."; return; }
