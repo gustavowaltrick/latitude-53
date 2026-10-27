@@ -47,6 +47,8 @@ function start(){
   auth = firebase.auth(); auth.languageCode = "pt";
   auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{ C.noStorage=true; });
   db = firebase.firestore();
+  // conexão por "long polling": mais estável em redes móveis e no Safari do iPhone
+  try{ db.settings({experimentalForceLongPolling:true, merge:true}); }catch(e){}
   C.ready = true;
   db.collection("admins").get().then(q=>{ C.admins=new Set(q.docs.map(d=>d.id)); refresh(); }).catch(()=>{});
   db.collection("comments").orderBy("em","desc").limit(300).onSnapshot(q=>{
