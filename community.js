@@ -15,6 +15,16 @@ const C = {
 let fb=null, auth=null, db=null;
 const esc=L.esc, toast=L.toast;
 const TS = () => firebase.firestore.FieldValue.serverTimestamp();
+function timed(p, ms){ return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej({code:"timeout"}), ms||12000))]); }
+function dbError(e, what){
+  const code = e && e.code;
+  const msg = code==="permission-denied" ? `Sem permissão para ${what}. Confira se as regras do Firestore foram publicadas.`
+    : code==="timeout" || code==="unavailable" ? `Não consegui falar com o banco de dados para ${what}. Confira a internet; se continuar, o banco Firestore pode não ter sido criado.`
+    : code==="not-found" ? `Banco de dados não encontrado ao ${what}. Confira se o Firestore foi criado como "(default)".`
+    : `Não deu para ${what}${code?" ("+code+")":""}.`;
+  toast(msg); C.lastError = msg + (code?" ["+code+"]":"");
+  return false;
+}
 
 /* ---------- views are registered right away so links like #comunidade work ---------- */
 L.addView("comunidade","Comunidade",vComunidade,{after:"guia"});
@@ -46,8 +56,8 @@ function start(){
       const ref=db.collection("profiles").doc(u.uid);
       try{
         const snap=await ref.get();
-        if(!snap.exists){ await ref.set(cleanProfile({nome:u.displayName||(u.email||"").split("@")[0], foto:googlePhoto(u), insta:"", cidade:"", bio:"", paises:[], criadoEm:TS()})); }
-      }catch(e){}
+        if(!snap.exists){ await timed(ref.set(cleanProfile({nome:u.displayName||(u.email||"").split("@")[0], foto:googlePhoto(u), insta:"", cidade:"", bio:"", paises:[], criadoEm:TS()}))); }
+      }catch(e){ dbError(e,"criar seu perfil"); }
       C.unsub.push(ref.onSnapshot(s=>{ C.me=s.exists?Object.assign({id:u.uid},s.data()):null; if(C.me){ C.profiles[u.uid]=C.me; if(C.members){ const i=C.members.findIndex(m=>m.id===u.uid); if(i>=0) C.members[i]=C.me; else C.members.unshift(C.me); } } L.render(); },()=>{}));
       C.unsub.push(db.collection("follows").where("from","==",u.uid).onSnapshot(q=>{ C.following=new Set(q.docs.map(d=>d.data().to)); refresh(); },()=>{}));
       C.unsub.push(db.collection("users").doc(u.uid).collection("salvos").onSnapshot(q=>{ C.saved={}; q.docs.forEach(d=>C.saved[d.id]=d.data()); refresh(); },()=>{}));
@@ -70,7 +80,8 @@ function cleanProfile(p){
   return o;
 }
 const wanted=new Set(); let wantT=0;
-function want(uids){ uids.forEach(u=>{ if(u && !C.profiles[u]) wanted.add(u); }); if(wanted.size && !wantT) wantT=setTimeout(fetchProfiles,30); }
+const asked=new Set();
+function want(uids){ uids.forEach(u=>{ if(u && !C.profiles[u] && !asked.has(u)){ wanted.add(u); asked.add(u); } }); if(wanted.size && !wantT) wantT=setTimeout(fetchProfiles,30); }
 async function fetchProfiles(){
   wantT=0; const ids=[...wanted]; wanted.clear();
   for(let i=0;i<ids.length;i+=10){
@@ -170,9 +181,9 @@ async function sendComment(alvo,titulo,form){
   const ta=form.querySelector("textarea"); const texto=ta.value.trim(); if(!texto) return;
   const btn=form.querySelector("button"); btn.disabled=true;
   try{
-    await db.collection("comments").add({alvo, alvoTitulo:String(titulo).slice(0,120), uid:C.user.uid, nome:(C.me&&C.me.nome)||"", texto:texto.slice(0,1000), em:TS()});
+    await timed(db.collection("comments").add({alvo, alvoTitulo:String(titulo).slice(0,120), uid:C.user.uid, nome:(C.me&&C.me.nome)||"", texto:texto.slice(0,1000), em:TS()}));
     ta.value=""; ta.blur();
-  }catch(e){ toast(e&&e.code==="permission-denied"?"Confirme seu e-mail para comentar.":"Não deu para enviar. Tente de novo."); }
+  }catch(e){ if(e&&e.code==="permission-denied"&&!C.verified) toast("Confirme seu e-mail para comentar."); else dbError(e,"enviar o comentário"); }
   btn.disabled=false;
 }
 async function delComment(id,btn){
@@ -182,7 +193,7 @@ async function delComment(id,btn){
 async function toggleSave(alvo,titulo){
   if(!C.user) return needLogin("Entre para salvar seus favoritos.");
   const id=alvo.replace(":","_"); const ref=db.collection("users").doc(C.user.uid).collection("salvos").doc(id);
-  try{ if(C.saved[id]){ await ref.delete(); toast("Removido dos salvos"); } else { await ref.set({alvo, titulo:String(titulo).slice(0,120), em:TS()}); toast("Salvo"); } }catch(e){ toast("Não deu para salvar."); }
+  try{ if(C.saved[id]){ await timed(ref.delete()); toast("Removido dos salvos"); } else { await timed(ref.set({alvo, titulo:String(titulo).slice(0,120), em:TS()})); toast("Salvo"); } }catch(e){ dbError(e,"salvar"); }
 }
 async function resendVerify(){ try{ await C.user.sendEmailVerification(); toast("Enviamos um novo link para "+C.user.email); }catch(e){ authError(e); } }
 
@@ -226,7 +237,7 @@ function authSheet(mode){
         const nome=(dlg.querySelector("#a-nome").value||"").trim(); if(!nome){ toast("Escreva seu nome."); btn.disabled=false; return; }
         const cred=await auth.createUserWithEmailAndPassword(email,senha);
         await cred.user.updateProfile({displayName:nome});
-        await db.collection("profiles").doc(cred.user.uid).set(cleanProfile({nome, insta:"", cidade:"", bio:"", paises:[], criadoEm:TS()}));
+        try{ await timed(db.collection("profiles").doc(cred.user.uid).set(cleanProfile({nome, insta:"", cidade:"", bio:"", paises:[], criadoEm:TS()}))); }catch(x){ dbError(x,"criar seu perfil"); }
         try{ await cred.user.sendEmailVerification(); }catch(x){}
         close(); toast("Conta criada! Confirme seu e-mail pelo link que enviamos para comentar.");
         C.perfilUid=cred.user.uid; L.go("perfil");
@@ -307,7 +318,7 @@ function goTo(alvo){
 async function toggleFollow(uid){
   if(!C.user) return needLogin("Entre para seguir outros membros.");
   const id=C.user.uid+"_"+uid; const ref=db.collection("follows").doc(id);
-  try{ if(C.following.has(uid)) await ref.delete(); else await ref.set({from:C.user.uid,to:uid,em:TS()}); C.followCache=null; }catch(e){ toast("Não deu certo. Tente de novo."); }
+  try{ if(C.following.has(uid)) await timed(ref.delete()); else await timed(ref.set({from:C.user.uid,to:uid,em:TS()})); C.followCache=null; }catch(e){ dbError(e,"seguir"); }
 }
 
 /* ---------- Perfil view ---------- */
@@ -316,7 +327,8 @@ function vPerfil(){
   const uid=C.perfilUid || (C.user&&C.user.uid);
   if(!uid) return `<section class="band"><div class="wrap"><div class="empty-state"><p class="h3">Entre para ver seu perfil</p><p style="margin-top:12px"><button class="btn" type="button" data-login>Criar conta ou entrar</button></p></div></div></section>`;
   const mine = C.user && C.user.uid===uid;
-  const p = C.profiles[uid]; if(!p) want([uid]);
+  let p = C.profiles[uid]; if(!p) want([uid]);
+  if(!p && mine) p = {nome:C.user.displayName||(C.user.email||"").split("@")[0], paises:[], foto:googlePhoto(C.user)};
   loadFollowCounts(uid);
   const fc = (C.followCache && C.followCache.uid===uid) ? C.followCache : null;
   const seus = C.comments.filter(c=>c.uid===uid).slice(0,30);
@@ -332,6 +344,7 @@ function vPerfil(){
         <div class="actions" style="margin-top:16px">${mine?`<button class="btn secondary" type="button" data-edit-me>Editar perfil</button><button class="btn plain" type="button" data-logout>Sair</button>`:followBtn(uid)}</div>
       </div>
     </div>
+    ${mine && C.lastError?`<div class="verify-box"><strong>Algo não funcionou</strong><span class="small">${esc(C.lastError)}</span></div>`:""}
     ${mine && !C.verified?`<div class="verify-box"><strong>Confirme seu e-mail</strong><span class="small">Enviamos um link para ${esc(C.user.email||"")}. Depois de abrir, toque em "Já confirmei".</span><div class="actions"><button class="btn" type="button" data-reload>Já confirmei</button><button class="btn plain" type="button" data-verify>Reenviar</button></div></div>`:""}
     ${(p&&p.paises||[]).length?`<h2 class="h3 hoje-h">Países que já visitou</h2><div class="chips">${p.paises.map(a=>`<span class="chip"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))}</span>`).join("")}</div>`:""}
     ${mine?`<h2 class="h3 hoje-h">Salvos</h2>${salvos.length?`<div class="feed">${salvos.map(s=>`<div class="feed-item"><div class="c-body"><button type="button" class="link-btn" data-alvo="${esc(s.alvo)}">${esc(s.titulo||s.alvo)}</button><span class="tiny"> · ${s.alvo.startsWith("dia:")?"Roteiro":"Mapa"}</span></div></div>`).join("")}</div>`:`<p class="small muted">Toque em Salvar num dia do Roteiro ou num lugar do Mapa para guardar aqui.</p>`}`:""}
@@ -348,27 +361,63 @@ function loadFollowCounts(uid){
     .catch(()=>{ C.followLoading=null; });
 }
 function editProfile(){
-  const me=C.me||{}; let paises=(me.paises||[]).slice();
-  L.sheet({title:"Editar perfil", value:{nome:me.nome,insta:me.insta,cidade:me.cidade,bio:me.bio}, fields:[
-    {key:"nome",label:"Nome"},
-    {type:"row",fields:[{key:"insta",label:"Instagram",placeholder:"seu.perfil"},{key:"cidade",label:"Onde mora",placeholder:"Salvador, BA"}]},
-    {key:"bio",label:"Sobre você",type:"textarea",rows:3,help:"Até 280 caracteres."}],
-    extra:(box)=>{
-      const opts=L.countryOptions().filter(o=>o[0]);
-      box.innerHTML=`<div class="field"><label for="pais-add">Países que já visitou</label><input type="text" id="pais-add" list="dl-paises" placeholder="Digite e escolha um país"><datalist id="dl-paises">${opts.map(o=>`<option value="${esc(o[1])}"></option>`).join("")}</datalist><div class="chips" id="pais-chips"></div></div>`;
-      const draw=()=>{ box.querySelector("#pais-chips").innerHTML=paises.map(a=>`<span class="chip"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))} <button type="button" data-rm="${a}" aria-label="Remover">×</button></span>`).join(""); };
-      draw();
-      const inp=box.querySelector("#pais-add");
-      const add=()=>{ const k=L.nrm(inp.value); const hit=opts.find(o=>L.nrm(o[1])===k); if(hit && !paises.includes(hit[0])){ paises.push(hit[0]); draw(); inp.value=""; } };
-      inp.addEventListener("change",add); inp.addEventListener("keydown",e=>{ if(e.key==="Enter"){ e.preventDefault(); add(); } });
-      box.querySelector("#pais-chips").onclick=e=>{ const b=e.target.closest("[data-rm]"); if(b){ paises=paises.filter(x=>x!==b.dataset.rm); draw(); } };
-    },
-    onSave:async o=>{
-      const data=cleanProfile(Object.assign({},me,o,{paises}));
-      delete data.criadoEm;
-      try{ await db.collection("profiles").doc(C.user.uid).set(data,{merge:true}); if(o.nome && o.nome!==C.user.displayName) C.user.updateProfile({displayName:data.nome}).catch(()=>{}); return true; }
-      catch(e){ toast("Não deu para salvar o perfil."); return false; }
-    }});
+  if(!C.user) return needLogin();
+  const me=C.me||{nome:C.user.displayName||"", insta:"", cidade:"", bio:"", paises:[], foto:googlePhoto(C.user)};
+  let paises=(me.paises||[]).slice();
+  const all=L.countryOptions().filter(o=>o[0]);
+  const dlg=document.createElement("dialog"); dlg.className="sheet profile-sheet";
+  dlg.innerHTML=`<form method="dialog" novalidate><header><h2 class="h3">Editar perfil</h2><button type="button" class="icon-btn" data-x aria-label="Fechar">✕</button></header>
+    <div class="body">
+      <div class="field"><label for="p-nome">Nome</label><input type="text" id="p-nome" maxlength="60" autocomplete="name" value="${esc(me.nome||"")}"></div>
+      <div class="row2">
+        <div class="field"><label for="p-insta">Instagram</label><input type="text" id="p-insta" maxlength="31" autocapitalize="off" spellcheck="false" placeholder="seu.perfil" value="${esc(me.insta||"")}"></div>
+        <div class="field"><label for="p-cidade">Onde mora</label><input type="text" id="p-cidade" maxlength="60" placeholder="Salvador, BA" value="${esc(me.cidade||"")}"></div>
+      </div>
+      <div class="field"><label for="p-bio">Sobre você</label><textarea id="p-bio" maxlength="280" rows="3" placeholder="Uma frase sobre você ou suas viagens">${esc(me.bio||"")}</textarea><span class="help"><span id="p-bio-n">${(me.bio||"").length}</span>/280</span></div>
+      <div class="field"><label for="p-busca">Países que já visitou <span class="tiny" id="p-count"></span></label>
+        <div class="chips" id="p-sel"></div>
+        <input type="search" id="p-busca" placeholder="Buscar país (ex.: Portugal)" autocomplete="off">
+        <div class="pais-list" id="p-list" role="listbox" aria-multiselectable="true" aria-label="Países"></div>
+      </div>
+      <p class="small p-err" id="p-err" hidden></p>
+    </div>
+    <footer><span class="sp"></span><button type="button" class="btn plain" data-x>Cancelar</button><button type="submit" class="btn" id="p-save">Salvar</button></footer></form>`;
+  document.body.appendChild(dlg);
+  const $d=q=>dlg.querySelector(q);
+  const close=()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); };
+  dlg.querySelectorAll("[data-x]").forEach(b=>b.onclick=close);
+  dlg.addEventListener("cancel",e=>{ e.preventDefault(); close(); });
+  $d("#p-bio").addEventListener("input",()=>{ $d("#p-bio-n").textContent=$d("#p-bio").value.length; });
+  const drawSel=()=>{
+    $d("#p-count").textContent = paises.length ? `(${paises.length})` : "";
+    $d("#p-sel").innerHTML = paises.length ? paises.map(a=>`<button type="button" class="chip chip-x" data-rm="${a}" aria-label="Remover ${esc(L.countryName(a))}"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))} <span aria-hidden="true">×</span></button>`).join("") : `<span class="tiny">Toque nos países da lista abaixo para marcar.</span>`;
+  };
+  const drawList=()=>{
+    const k=L.nrm($d("#p-busca").value);
+    const rows=all.filter(o=>!k || L.nrm(o[1]).includes(k)).slice(0, k?60:300);
+    $d("#p-list").innerHTML = rows.length ? rows.map(([a,n])=>`<button type="button" role="option" class="pais-opt" data-a="${a}" aria-selected="${paises.includes(a)}"><span class="flag">${L.flag(a)}</span><span class="pn">${esc(n)}</span><span class="ck" aria-hidden="true">${paises.includes(a)?"✓":""}</span></button>`).join("") : `<p class="tiny" style="padding:10px">Nenhum país com esse nome.</p>`;
+  };
+  drawSel(); drawList();
+  $d("#p-busca").addEventListener("input",drawList);
+  $d("#p-list").addEventListener("click",e=>{ const b=e.target.closest("[data-a]"); if(!b) return; const a=b.dataset.a;
+    paises = paises.includes(a) ? paises.filter(x=>x!==a) : paises.concat(a);
+    b.setAttribute("aria-selected",paises.includes(a)); b.querySelector(".ck").textContent=paises.includes(a)?"✓":""; drawSel(); });
+  $d("#p-sel").addEventListener("click",e=>{ const b=e.target.closest("[data-rm]"); if(!b) return; paises=paises.filter(x=>x!==b.dataset.rm); drawSel(); drawList(); });
+  $d("form").onsubmit=async e=>{
+    e.preventDefault();
+    const nome=$d("#p-nome").value.trim(); const err=$d("#p-err");
+    if(!nome){ err.textContent="Escreva seu nome."; err.hidden=false; $d("#p-nome").focus(); return; }
+    const data=cleanProfile({nome, insta:$d("#p-insta").value, cidade:$d("#p-cidade").value, bio:$d("#p-bio").value, paises, foto:me.foto});
+    if(!C.me) data.criadoEm=TS();
+    const btn=$d("#p-save"); btn.disabled=true; btn.textContent="Salvando…"; err.hidden=true;
+    try{
+      await timed(db.collection("profiles").doc(C.user.uid).set(data,{merge:true}));
+      if(nome!==C.user.displayName) C.user.updateProfile({displayName:nome}).catch(()=>{});
+      C.profiles[C.user.uid]=Object.assign({id:C.user.uid},C.me||{},data);
+      close(); toast("Perfil salvo"); L.render();
+    }catch(x){ dbError(x,"salvar o perfil"); err.textContent=C.lastError; err.hidden=false; btn.disabled=false; btn.textContent="Salvar"; }
+  };
+  if(typeof dlg.showModal==="function"){ try{ dlg.showModal(); }catch(e){ dlg.setAttribute("open",""); dlg.classList.add("no-modal"); } } else { dlg.setAttribute("open",""); dlg.classList.add("no-modal"); }
 }
 async function deleteAccount(btn){
   if(!btn.dataset.confirm){ btn.dataset.confirm=1; btn.textContent="Toque de novo para excluir sua conta, seus comentários e seus salvos. Não dá para desfazer."; return; }
