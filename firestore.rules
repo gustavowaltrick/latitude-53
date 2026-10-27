@@ -22,12 +22,13 @@ service cloud.firestore {
     match /profiles/{uid} {
       allow read: if true;
       allow create, update: if isMe(uid)
-        && request.resource.data.keys().hasOnly(['nome','insta','cidade','bio','paises','foto','criadoEm'])
+        && request.resource.data.keys().hasOnly(['nome','insta','cidade','bio','paises','foto','avatar','criadoEm'])
         && str(request.resource.data.nome, 60) && request.resource.data.nome.size() > 0
         && str(request.resource.data.get('insta',''), 30)
         && str(request.resource.data.get('cidade',''), 60)
         && str(request.resource.data.get('bio',''), 280)
         && str(request.resource.data.get('foto',''), 500)
+        && str(request.resource.data.get('avatar',''), 140000)
         && request.resource.data.get('paises', []) is list
         && request.resource.data.get('paises', []).size() <= 200;
       allow delete: if isMe(uid);
@@ -50,11 +51,41 @@ service cloud.firestore {
       allow create: if verified()
         && request.resource.data.keys().hasOnly(['alvo','alvoTitulo','uid','nome','texto','em'])
         && request.resource.data.uid == request.auth.uid
-        && str(request.resource.data.alvo, 80) && request.resource.data.alvo.matches('^(dia|lugar):[A-Za-z0-9_-]+$')
+        && str(request.resource.data.alvo, 80) && request.resource.data.alvo.matches('^(dia|lugar|post):[A-Za-z0-9_-]+$')
         && str(request.resource.data.alvoTitulo, 120)
         && str(request.resource.data.nome, 60)
         && str(request.resource.data.texto, 1000) && request.resource.data.texto.size() > 0
         && request.resource.data.em == request.time;
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow update: if false;
+    }
+
+    match /posts/{id} {
+      allow read: if true;
+      allow create: if verified()
+        && request.resource.data.keys().hasOnly(['uid','nome','titulo','cidade','paisA2','texto','link','temFoto','em'])
+        && request.resource.data.uid == request.auth.uid
+        && str(request.resource.data.titulo, 100) && request.resource.data.titulo.size() > 0
+        && str(request.resource.data.nome, 60)
+        && str(request.resource.data.get('cidade',''), 60)
+        && str(request.resource.data.get('paisA2',''), 2)
+        && str(request.resource.data.get('texto',''), 1500)
+        && str(request.resource.data.get('link',''), 300)
+        && request.resource.data.get('temFoto', false) is bool
+        && request.resource.data.em == request.time;
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow update: if false;
+    }
+
+    match /fotos/{id} {
+      allow read: if true;
+      allow create: if verified()
+        && request.resource.data.keys().hasOnly(['uid','data'])
+        && request.resource.data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/posts/$(id)).data.uid == request.auth.uid
+        && request.resource.data.data is string
+        && request.resource.data.data.size() <= 400000
+        && request.resource.data.data.matches('data:image/jpeg;base64,.*');
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
       allow update: if false;
     }

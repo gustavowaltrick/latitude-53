@@ -45,7 +45,7 @@ const fmtDay = iso => { const d=new Date(iso+"T12:00:00"); return {
   short:d.toLocaleDateString("pt-BR",{day:"numeric",month:"short"}) }; };
 const isPrivateNow = () => !S.canEdit || S.publicView || !!PUB;
 const imgSrc = (id,data) => data || (id ? "/_blob/"+id : "");
-function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2600); }
+function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.setAttribute("role","status"); t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2600); }
 const uid = () => Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
 
 const todayISO = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
@@ -245,6 +245,8 @@ function gearSvg(){ return `<svg width="18" height="18" viewBox="0 0 24 24" fill
 function bindShell(){
   const t=$("#toggle-pub"); if(t) t.onclick=()=>{S.publicView=!S.publicView; render();};
   const th=$("#toggle-theme"); if(th) th.onclick=()=>toggleTheme(th);
+  // a tab whose hash is already in the address bar fires no hashchange (e.g. coming back from a hidden view)
+  document.querySelectorAll(".tabs a, a.brand").forEach(l=>l.addEventListener("click",e=>{ const k=(l.getAttribute("href")||"").replace("#",""); if(k && location.hash==="#"+k && S.view!==k){ e.preventDefault(); S.view=k; render(); window.scrollTo(0,0); } }));
   const g=$("#open-settings"); if(g) g.onclick=openSettings;
   const fb=$("#fab-gasto"); if(fb) fb.onclick=()=>quickExpense();
 }

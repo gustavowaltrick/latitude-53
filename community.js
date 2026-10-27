@@ -13,9 +13,10 @@ function cacheUser(u){ try{ if(u) localStorage.setItem(CACHE_KEY, JSON.stringify
 const C = {
   ready:false, user:null, verified:false, me:null, admins:new Set(),
   comments:[], byTarget:{}, profiles:{}, following:new Set(), saved:{},
-  open:new Set(), perfilUid:null, filtro:"todos", members:null, unsub:[], authKnown:false
+  open:new Set(), perfilUid:null, filtro:"todos", members:null, unsub:[], authKnown:false,
+  posts:[], fotos:{}, fotoLoading:new Set()
 };
-{ const cu=cachedUser(); if(cu && cu.uid) C.profiles[cu.uid]={id:cu.uid, nome:cu.nome||"", foto:cu.foto||""}; }
+{ const cu=cachedUser(); if(cu && cu.uid) C.profiles[cu.uid]={id:cu.uid, nome:cu.nome||"", foto:cu.foto||"", avatar:cu.avatar||""}; }
 let fb=null, auth=null, db=null;
 const esc=L.esc, toast=L.toast;
 const TS = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -56,6 +57,10 @@ function start(){
     C.byTarget = {}; C.comments.forEach(c=>{ (C.byTarget[c.alvo]=C.byTarget[c.alvo]||[]).push(c); });
     want(C.comments.map(c=>c.uid)); refresh();
   },()=>{});
+  db.collection("posts").orderBy("em","desc").limit(60).onSnapshot(q=>{
+    C.posts = q.docs.map(d=>Object.assign({id:d.id},d.data()));
+    want(C.posts.map(x=>x.uid)); refresh();
+  },()=>{});
   auth.getRedirectResult().catch(e=>authError(e));
   auth.onAuthStateChanged(async u=>{
     const had=cachedUser(); const first=!C.authKnown; C.authKnown=true;
@@ -69,7 +74,7 @@ function start(){
         const snap=await timed(ref.get({source:"server"}));
         if(!snap.exists){ await timed(ref.set(cleanProfile({nome:u.displayName||(u.email||"").split("@")[0], foto:googlePhoto(u), insta:"", cidade:"", bio:"", paises:[], criadoEm:TS()}))); }
       }catch(e){ dbError(e,"criar seu perfil"); }
-      C.unsub.push(ref.onSnapshot(s=>{ C.me=s.exists?Object.assign({id:u.uid},s.data()):null; if(C.me){ C.profiles[u.uid]=C.me; cacheUser({uid:u.uid, nome:C.me.nome||"", foto:C.me.foto||""}); if(C.members){ const i=C.members.findIndex(m=>m.id===u.uid); if(i>=0) C.members[i]=C.me; else C.members.unshift(C.me); } } L.render(); },()=>{}));
+      C.unsub.push(ref.onSnapshot(s=>{ C.me=s.exists?Object.assign({id:u.uid},s.data()):null; if(C.me){ C.profiles[u.uid]=C.me; cacheUser({uid:u.uid, nome:C.me.nome||"", foto:C.me.foto||"", avatar:C.me.avatar||""}); if(C.members){ const i=C.members.findIndex(m=>m.id===u.uid); if(i>=0) C.members[i]=C.me; else C.members.unshift(C.me); } } L.render(); },()=>{}));
       C.unsub.push(db.collection("follows").where("from","==",u.uid).onSnapshot(q=>{ C.following=new Set(q.docs.map(d=>d.data().to)); refresh(); },()=>{}));
       C.unsub.push(db.collection("users").doc(u.uid).collection("salvos").onSnapshot(q=>{ C.saved={}; q.docs.forEach(d=>C.saved[d.id]=d.data()); refresh(); },()=>{}));
     }
@@ -79,6 +84,25 @@ function start(){
 
 /* ---------- helpers ---------- */
 function googlePhoto(u){ const p=(u.providerData||[]).find(x=>x.providerId==="google.com"); const url=(p&&p.photoURL)||u.photoURL||""; return /^https:\/\/[a-z0-9.-]*googleusercontent\.com\//i.test(url)?url:""; }
+/* resize a picked photo to a compact JPEG data URL (square crop for avatars) */
+async function shrinkImage(file, maxSide, quality, square, maxChars){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error("img")); i.src=url; });
+    let sw=img.naturalWidth, sh=img.naturalHeight, sx=0, sy=0;
+    if(square){ const m=Math.min(sw,sh); sx=(sw-m)/2; sy=(sh-m)/2; sw=sh=m; }
+    let k=Math.min(1, maxSide/Math.max(sw,sh)), q=quality, out="";
+    for(let tries=0; tries<6; tries++){
+      const c=document.createElement("canvas"); c.width=Math.max(1,Math.round(sw*k)); c.height=Math.max(1,Math.round(sh*k));
+      const g=c.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,c.width,c.height); g.drawImage(img,sx,sy,sw,sh,0,0,c.width,c.height);
+      out=c.toDataURL("image/jpeg",q);
+      if(out.length<=maxChars) return out;
+      q=Math.max(.45,q-.1); k*=.85;
+    }
+    if(out.length>maxChars) throw new Error("grande");
+    return out;
+  } finally { URL.revokeObjectURL(url); }
+}
 function cleanProfile(p){
   const o={};
   o.nome=String(p.nome||"").trim().slice(0,60)||"Viajante";
@@ -87,6 +111,7 @@ function cleanProfile(p){
   o.bio=String(p.bio||"").trim().slice(0,280);
   o.paises=(p.paises||[]).filter(a=>/^[A-Z]{2}$/.test(a)).slice(0,200);
   o.foto=p.foto&&/^https:\/\/[a-z0-9.-]*googleusercontent\.com\//i.test(p.foto)?p.foto:"";
+  if(typeof p.avatar==="string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(p.avatar) && p.avatar.length<=140000) o.avatar=p.avatar;
   if(p.criadoEm) o.criadoEm=p.criadoEm;
   return o;
 }
@@ -105,7 +130,8 @@ function avatar(uid,size){
   const p=C.profiles[uid]||{}; const n=(p.nome||"?").trim();
   const ini=n.split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
   const hue=[...uid].reduce((a,c)=>a+c.charCodeAt(0),0)%360;
-  if(p.foto) return `<span class="av" style="--s:${size||36}px"><img src="${esc(p.foto)}" alt="" referrerpolicy="no-referrer"></span>`;
+  const pic = (p.avatar && /^data:image\/jpeg;base64,/.test(p.avatar)) ? p.avatar : p.foto;
+  if(pic) return `<span class="av" style="--s:${size||36}px"><img src="${esc(pic)}" alt="" referrerpolicy="no-referrer" decoding="async"></span>`;
   return `<span class="av" style="--s:${size||36}px;--h:${hue}">${esc(ini)}</span>`;
 }
 const badge = uid => C.admins.has(uid) ? `<span class="badge-autor">Autor</span>` : "";
@@ -148,8 +174,10 @@ function decorate(){
   const ent=document.getElementById("c-entrar"); if(ent && !ent.dataset.b){ ent.dataset.b=1; ent.onclick=()=>authSheet("entrar"); }
   const me=document.getElementById("c-me"); if(me && !me.dataset.b){ me.dataset.b=1; me.onclick=()=>{ C.perfilUid=C.user.uid; L.go("perfil"); }; }
   if(!C.ready) return;
-  document.querySelectorAll("[data-day],[data-place]").forEach(card=>{
-    const alvo = card.dataset.day ? "dia:"+card.dataset.day : "lugar:"+card.dataset.place;
+  loadPostPhotos();
+  document.querySelectorAll("[data-day],[data-place],[data-post]").forEach(card=>{
+    const isPost = !!card.dataset.post;
+    const alvo = card.dataset.day ? "dia:"+card.dataset.day : isPost ? "post:"+card.dataset.post : "lugar:"+card.dataset.place;
     const titulo = card.dataset.title||"";
     const host = card.dataset.day ? (card.querySelector(".day-body")||card) : card;
     let bar = host.querySelector(":scope > .social");
@@ -157,7 +185,7 @@ function decorate(){
     const saved = !!C.saved[alvo.replace(":","_")];
     const html = `<div class="social-row">
         <button type="button" class="soc-btn" data-c-open aria-expanded="${C.open.has(alvo)}">${icon.chat}<span>${list.length?list.length+" "+(list.length===1?"comentário":"comentários"):"Comentar"}</span></button>
-        <button type="button" class="soc-btn ${saved?"on":""}" data-c-save aria-pressed="${saved}">${saved?icon.starOn:icon.star}<span>${saved?"Salvo":"Salvar"}</span></button>
+        <button type="button" class="soc-btn ${saved?"on":""}" data-c-save aria-pressed="${saved}">${saved?icon.starOn:icon.star}<span>${isPost ? (saved?"Na lista de desejos":"Quero ir") : (saved?"Salvo":"Salvar")}</span></button>
       </div>
       ${C.open.has(alvo)?thread(alvo,list):""}`;
     if(!bar){ bar=document.createElement("div"); bar.className="social"; host.appendChild(bar); }
@@ -208,7 +236,7 @@ async function delComment(id,btn){
 async function toggleSave(alvo,titulo){
   if(!C.user) return needLogin("Entre para salvar seus favoritos.");
   const id=alvo.replace(":","_"); const ref=db.collection("users").doc(C.user.uid).collection("salvos").doc(id);
-  try{ if(C.saved[id]){ await timed(ref.delete()); toast("Removido dos salvos"); } else { await timed(ref.set({alvo, titulo:String(titulo).slice(0,120), em:TS()})); toast("Salvo"); } }catch(e){ dbError(e,"salvar"); }
+  try{ if(C.saved[id]){ await timed(ref.delete()); toast(alvo.startsWith("post:")?"Tirado da lista de desejos":"Removido dos salvos"); } else { await timed(ref.set({alvo, titulo:String(titulo).slice(0,120), em:TS()})); toast(alvo.startsWith("post:")?"Adicionado à sua lista de desejos":"Salvo"); } }catch(e){ dbError(e,"salvar"); }
 }
 async function resendVerify(){ try{ await C.user.sendEmailVerification(); toast("Enviamos um novo link para "+C.user.email); }catch(e){ authError(e); } }
 
@@ -285,26 +313,108 @@ function vComunidade(){
   if(!C.ready) return `<section class="band"><div class="wrap"><p class="eyebrow">Comunidade</p><h1 class="h1">Carregando…</h1></div></section>`;
   loadMembers();
   const feed = (C.filtro==="seguindo" && C.user) ? C.comments.filter(c=>C.following.has(c.uid)) : C.comments;
+  const posts = (C.filtro==="seguindo" && C.user) ? C.posts.filter(x=>C.following.has(x.uid)||x.uid===C.user.uid) : C.posts;
   const members = (C.members||[]).slice().sort((a,b)=>(C.admins.has(b.id)-C.admins.has(a.id)));
   setTimeout(bindCommunity,0);
   return `<section class="band"><div class="wrap">
     <div class="head-row"><div><p class="eyebrow">Comunidade</p><h1 class="h1">Quem vem junto.</h1><p class="lead">Gente que acompanha a mudança, comenta os lugares e troca dicas de viagem.</p></div>
     ${C.user?`<div class="actions"><button class="btn secondary" type="button" data-go-me>Meu perfil</button></div>`:`<div class="actions"><button class="btn" type="button" data-login>Criar conta ou entrar</button></div>`}</div>
 
-    <h2 class="h3" style="margin-bottom:14px">Membros</h2>
+    <div class="head-row" style="margin:0 0 14px"><h2 class="h3">Dicas da comunidade</h2>
+      <div class="actions">${C.user?`<div class="segbar" role="group" aria-label="Filtrar" style="margin:0"><button type="button" data-filtro="todos" aria-pressed="${C.filtro!=="seguindo"}">Todos</button><button type="button" data-filtro="seguindo" aria-pressed="${C.filtro==="seguindo"}">Quem eu sigo</button></div>`:""}
+      <button class="btn" type="button" data-new-post>Nova dica</button></div></div>
+    ${posts.length?`<div class="posts">${posts.map(postCard).join("")}</div>`:`<div class="empty-state"><p class="h3">${C.filtro==="seguindo"?"Quem você segue ainda não postou":"Nenhuma dica ainda"}</p><p class="small">Compartilhe um lugar que você ama ou quer conhecer. Quem gostar adiciona à lista de desejos.</p></div>`}
+
+    <h2 class="h3" style="margin:48px 0 14px">Membros</h2>
     ${C.members===null?`<p class="muted small">Carregando membros…</p>`:members.length?`<div class="members">${members.map(m=>`<div class="member">
         <button type="button" class="m-open" data-profile="${esc(m.id)}">${avatar(m.id,52)}<span class="m-name">${esc(m.nome||"Viajante")} ${badge(m.id)}</span>
         <span class="tiny">${m.cidade?esc(m.cidade)+" · ":""}${(m.paises||[]).length} ${(m.paises||[]).length===1?"país":"países"}</span></button>
         ${followBtn(m.id)}</div>`).join("")}</div>`:`<div class="empty-state"><p class="h3">Ninguém ainda</p><p class="small">Crie a primeira conta.</p></div>`}
 
-    <div class="head-row" style="margin:48px 0 14px"><h2 class="h3">Atividade recente</h2>
-      ${C.user?`<div class="segbar" role="group" aria-label="Filtrar atividade" style="margin:0"><button type="button" data-filtro="todos" aria-pressed="${C.filtro!=="seguindo"}">Todos</button><button type="button" data-filtro="seguindo" aria-pressed="${C.filtro==="seguindo"}">Quem eu sigo</button></div>`:""}</div>
+    <div class="head-row" style="margin:48px 0 14px"><h2 class="h3">Comentários recentes</h2></div>
     ${feed.length?`<div class="feed">${feed.slice(0,60).map(c=>`<div class="feed-item">
         <button type="button" class="c-av" data-profile="${esc(c.uid)}" aria-label="Perfil">${avatar(c.uid,36)}</button>
         <div class="c-body"><div class="c-meta"><button type="button" class="link-btn c-name" data-profile="${esc(c.uid)}">${esc(nameOf(c.uid,c.nome))}</button>${badge(c.uid)}<span class="tiny">comentou em <button type="button" class="link-btn tiny" data-alvo="${esc(c.alvo)}">${esc(c.alvoTitulo||"um lugar")}</button> · ${esc(when(c.em))}</span></div>
         <div class="c-text">${esc(c.texto)}</div></div></div>`).join("")}</div>`
       :`<div class="empty-state"><p class="h3">${C.filtro==="seguindo"?"Quem você segue ainda não comentou":"Nenhum comentário ainda"}</p><p class="small">Abra um dia do Roteiro ou um lugar do Mapa e toque em Comentar.</p></div>`}
   </div></section>`;
+}
+function postCard(x){
+  const mine = C.user && (C.user.uid===x.uid || C.admins.has(C.user.uid));
+  const place=[x.cidade, x.paisA2?L.countryName(x.paisA2):""].filter(Boolean).join(", ");
+  const link=L.safeUrl(x.link);
+  return `<article class="post" data-post="${esc(x.id)}" data-title="${esc(x.titulo||"")}">
+    <header class="post-h"><button type="button" class="c-av" data-profile="${esc(x.uid)}" aria-label="Perfil">${avatar(x.uid,40)}</button>
+      <div class="c-body"><div class="c-meta"><button type="button" class="link-btn c-name" data-profile="${esc(x.uid)}">${esc(nameOf(x.uid,x.nome))}</button>${badge(x.uid)}<span class="tiny">${esc(when(x.em))}</span>
+      ${mine?`<button type="button" class="link-btn tiny c-del" data-del-post="${esc(x.id)}">Apagar</button>`:""}</div>
+      ${place?`<span class="place-chip">${x.paisA2?`<span class="flag">${L.flag(x.paisA2)}</span>`:""}${esc(place)}</span>`:""}</div></header>
+    ${x.temFoto?`<div class="post-img" data-foto="${esc(x.id)}">${C.fotos[x.id]?`<img src="${esc(C.fotos[x.id])}" alt="${esc(x.titulo||"")}" decoding="async">`:""}</div>`:""}
+    <h3 class="h3 post-t">${esc(x.titulo||"")}</h3>
+    ${x.texto?`<p class="c-text">${esc(x.texto)}</p>`:""}
+    ${link?`<a class="small" href="${esc(link)}" target="_blank" rel="noopener">Ver link ↗</a>`:""}
+  </article>`;
+}
+function loadPostPhotos(){
+  if(!db) return;
+  document.querySelectorAll(".post-img[data-foto]").forEach(box=>{
+    const id=box.dataset.foto;
+    if(C.fotos[id]){ if(!box.querySelector("img")) box.innerHTML=`<img src="${esc(C.fotos[id])}" alt="" decoding="async">`; return; }
+    if(C.fotoLoading.has(id) || C.fotos[id]===null) return;
+    C.fotoLoading.add(id);
+    db.collection("fotos").doc(id).get().then(d=>{
+      const v=d.exists && d.data().data; C.fotos[id]=(typeof v==="string" && v.startsWith("data:image/jpeg;base64,"))?v:null; C.fotoLoading.delete(id);
+      document.querySelectorAll(`.post-img[data-foto="${CSS.escape(id)}"]`).forEach(b=>{ if(C.fotos[id]) b.innerHTML=`<img src="${esc(C.fotos[id])}" alt="" decoding="async">`; else b.remove(); });
+    }).catch(()=>{ C.fotoLoading.delete(id); });
+  });
+}
+function postSheet(){
+  if(!C.user) return needLogin("Entre para publicar uma dica.");
+  if(!C.verified) { toast("Confirme seu e-mail para publicar."); C.perfilUid=C.user.uid; L.go("perfil"); return; }
+  let foto="";
+  const dlg=document.createElement("dialog"); dlg.className="sheet post-sheet";
+  dlg.innerHTML=`<form method="dialog" novalidate><header><h2 class="h3">Nova dica</h2><button type="button" class="icon-btn" data-x aria-label="Fechar">✕</button></header>
+    <div class="body">
+      <div class="post-photo" id="n-prev"><label for="n-file" class="post-photo-empty">Adicionar foto (opcional)</label></div>
+      <input type="file" id="n-file" accept="image/*" class="sr">
+      <div class="field"><label for="n-titulo">Título</label><input type="text" id="n-titulo" maxlength="100" placeholder="Ex.: Pôr do sol no Miradouro da Graça"></div>
+      <div class="row2">
+        <div class="field"><label for="n-cidade">Cidade ou lugar</label><input type="text" id="n-cidade" maxlength="60" placeholder="Lisboa"></div>
+        <div class="field"><label for="n-pais">País</label><select id="n-pais">${L.countryOptions().map(([a,n])=>`<option value="${esc(a)}">${esc(n)}</option>`).join("")}</select></div>
+      </div>
+      <div class="field"><label for="n-texto">Conte a dica</label><textarea id="n-texto" maxlength="1500" rows="4" placeholder="Por que vale a pena, quanto custa, melhor horário…"></textarea></div>
+      <div class="field"><label for="n-link">Link (opcional)</label><input type="url" id="n-link" maxlength="300" placeholder="https://"></div>
+      <p class="small p-err" id="n-err" hidden></p>
+    </div>
+    <footer><span class="sp"></span><button type="button" class="btn plain" data-x>Cancelar</button><button type="submit" class="btn" id="n-save">Publicar</button></footer></form>`;
+  document.body.appendChild(dlg);
+  const $d=q=>dlg.querySelector(q);
+  const close=()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); };
+  dlg.querySelectorAll("[data-x]").forEach(b=>b.onclick=close);
+  dlg.addEventListener("cancel",e=>{ e.preventDefault(); close(); });
+  const drawPrev=()=>{ $d("#n-prev").innerHTML = foto ? `<img src="${esc(foto)}" alt="Prévia"><button type="button" class="post-photo-rm" aria-label="Remover foto">×</button>` : `<label for="n-file" class="post-photo-empty">Adicionar foto (opcional)</label>`;
+    const rm=$d(".post-photo-rm"); if(rm) rm.onclick=()=>{ foto=""; drawPrev(); }; };
+  $d("#n-file").addEventListener("change",async ()=>{ const f=$d("#n-file").files[0]; if(!f) return;
+    $d("#n-prev").innerHTML=`<span class="post-photo-empty">Preparando foto…</span>`;
+    try{ foto=await shrinkImage(f, 1080, .72, false, 380000); }catch(e){ foto=""; toast("Não deu para usar essa foto. Tente outra."); }
+    drawPrev(); $d("#n-file").value=""; });
+  $d("form").onsubmit=async e=>{
+    e.preventDefault(); const err=$d("#n-err");
+    const titulo=$d("#n-titulo").value.trim(); if(!titulo){ err.textContent="Dê um título para a dica."; err.hidden=false; return; }
+    const link=$d("#n-link").value.trim(); if(link && !L.safeUrl(link)){ err.textContent="O link precisa começar com https://"; err.hidden=false; return; }
+    const btn=$d("#n-save"); btn.disabled=true; btn.textContent="Publicando…"; err.hidden=true;
+    const pais=$d("#n-pais").value;
+    try{
+      const ref=db.collection("posts").doc();
+      await timed(ref.set({uid:C.user.uid, nome:(C.me&&C.me.nome)||"", titulo:titulo.slice(0,100), cidade:$d("#n-cidade").value.trim().slice(0,60), paisA2:/^[A-Z]{2}$/.test(pais)?pais:"", texto:$d("#n-texto").value.trim().slice(0,1500), link:link.slice(0,300), temFoto:!!foto, em:TS()}),15000);
+      if(foto){ try{ await timed(db.collection("fotos").doc(ref.id).set({uid:C.user.uid, data:foto}),20000); C.fotos[ref.id]=foto; }catch(x){ dbError(x,"enviar a foto"); } }
+      close(); toast("Dica publicada"); L.render();
+    }catch(x){ dbError(x,"publicar a dica"); err.textContent=C.lastError; err.hidden=false; btn.disabled=false; btn.textContent="Publicar"; }
+  };
+  if(typeof dlg.showModal==="function"){ try{ dlg.showModal(); }catch(e){ dlg.setAttribute("open",""); dlg.classList.add("no-modal"); } } else { dlg.setAttribute("open",""); dlg.classList.add("no-modal"); }
+}
+async function delPost(id,btn){
+  if(!btn.dataset.confirm){ btn.dataset.confirm=1; btn.textContent="Confirmar"; setTimeout(()=>{ if(btn.isConnected){ btn.textContent="Apagar"; delete btn.dataset.confirm; } },3000); return; }
+  try{ const x=C.posts.find(p=>p.id===id); if(x&&x.temFoto) await timed(db.collection("fotos").doc(id).delete()).catch(()=>{}); await timed(db.collection("posts").doc(id).delete()); toast("Dica apagada"); }catch(e){ dbError(e,"apagar a dica"); }
 }
 function bindCommunity(){
   const v=document.getElementById("view"); if(!v || v.dataset.cb===L.S.view) return; v.dataset.cb=L.S.view;
@@ -315,6 +425,9 @@ function bindCommunity(){
     if(e.target.closest("[data-go-me]")){ C.perfilUid=C.user.uid; L.go("perfil"); return; }
     const fl=e.target.closest("[data-filtro]"); if(fl){ C.filtro=fl.dataset.filtro; L.render(); return; }
     const al=e.target.closest("[data-alvo]"); if(al) return goTo(al.dataset.alvo);
+    if(e.target.closest("[data-new-post]")) return postSheet();
+    const uw=e.target.closest("[data-unwish]"); if(uw) return toggleSave(uw.dataset.unwish,"");
+    const dp=e.target.closest("[data-del-post]"); if(dp) return delPost(dp.dataset.delPost, dp);
     const fw=e.target.closest("[data-follow]"); if(fw) return toggleFollow(fw.dataset.follow);
     if(e.target.closest("[data-edit-me]")) return editProfile();
     if(e.target.closest("[data-logout]")){ await auth.signOut(); toast("Você saiu da conta"); L.go("comunidade"); return; }
@@ -329,8 +442,8 @@ L.onAfterRender(()=>{ const v=document.getElementById("view"); if(v && ["comunid
 
 function goTo(alvo){
   const [tipo,id]=alvo.split(":"); C.open.add(alvo);
-  L.go(tipo==="dia"?"roteiro":"mapa");
-  setTimeout(()=>{ const el=document.querySelector(tipo==="dia"?`[data-day="${CSS.escape(id)}"]`:`[data-place="${CSS.escape(id)}"]`); if(el){ el.scrollIntoView({behavior:L.reduceMotion()?"auto":"smooth",block:"center"}); el.classList.add("flash"); setTimeout(()=>el.classList.remove("flash"),1600); } },400);
+  L.go(tipo==="dia"?"roteiro":tipo==="post"?"comunidade":"mapa");
+  setTimeout(()=>{ const el=document.querySelector(tipo==="dia"?`[data-day="${CSS.escape(id)}"]`:tipo==="post"?`[data-post="${CSS.escape(id)}"]`:`[data-place="${CSS.escape(id)}"]`); if(el){ el.scrollIntoView({behavior:L.reduceMotion()?"auto":"smooth",block:"center"}); el.classList.add("flash"); setTimeout(()=>el.classList.remove("flash"),1600); } },400);
 }
 async function toggleFollow(uid){
   if(!C.user) return needLogin("Entre para seguir outros membros.");
@@ -364,11 +477,23 @@ function vPerfil(){
     ${mine && C.lastError?`<div class="verify-box"><strong>Algo não funcionou</strong><span class="small">${esc(C.lastError)}</span></div>`:""}
     ${mine && !C.verified?`<div class="verify-box"><strong>Confirme seu e-mail</strong><span class="small">Enviamos um link para ${esc(C.user.email||"")}. Depois de abrir, toque em "Já confirmei".</span><div class="actions"><button class="btn" type="button" data-reload>Já confirmei</button><button class="btn plain" type="button" data-verify>Reenviar</button></div></div>`:""}
     ${(p&&p.paises||[]).length?`<h2 class="h3 hoje-h">Países que já visitou</h2><div class="chips">${p.paises.map(a=>`<span class="chip"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))}</span>`).join("")}</div>`:""}
-    ${mine?`<h2 class="h3 hoje-h">Salvos</h2>${salvos.length?`<div class="feed">${salvos.map(s=>`<div class="feed-item"><div class="c-body"><button type="button" class="link-btn" data-alvo="${esc(s.alvo)}">${esc(s.titulo||s.alvo)}</button><span class="tiny"> · ${s.alvo.startsWith("dia:")?"Roteiro":"Mapa"}</span></div></div>`).join("")}</div>`:`<p class="small muted">Toque em Salvar num dia do Roteiro ou num lugar do Mapa para guardar aqui.</p>`}`:""}
+    ${(()=>{ const theirs=C.posts.filter(x=>x.uid===uid); return theirs.length?`<h2 class="h3 hoje-h">Dicas publicadas</h2><div class="posts">${theirs.map(postCard).join("")}</div>`:""; })()}
+    ${mine?wishlist(salvos):""}
     <h2 class="h3 hoje-h">Comentários</h2>
     ${seus.length?`<div class="feed">${seus.map(c=>`<div class="feed-item"><div class="c-body"><div class="c-meta"><span class="tiny">em <button type="button" class="link-btn tiny" data-alvo="${esc(c.alvo)}">${esc(c.alvoTitulo||"um lugar")}</button> · ${esc(when(c.em))}</span></div><div class="c-text">${esc(c.texto)}</div></div></div>`).join("")}</div>`:`<p class="small muted">Nenhum comentário ainda.</p>`}
     ${mine?`<div class="diag" id="diag-box">${C.diag?C.diag:""}</div><p style="margin-top:56px" class="tiny"><button type="button" class="link-btn tiny" data-diag>Verificar conexão com o banco</button> · <button type="button" class="link-btn tiny" data-del-account>Excluir minha conta</button> · <button type="button" class="link-btn tiny" onclick="LAT53.go('privacidade')">Privacidade</button></p>`:""}
   </div></section>`;
+}
+function wishlist(salvos){
+  const dicas=salvos.filter(x=>x.alvo.startsWith("post:")); const nossos=salvos.filter(x=>!x.alvo.startsWith("post:"));
+  const row=x=>{ const id=x.alvo.split(":")[1]; const post=x.alvo.startsWith("post:")?C.posts.find(p=>p.id===id):null;
+    const place=post?[post.cidade, post.paisA2?L.countryName(post.paisA2):""].filter(Boolean).join(", "):(x.alvo.startsWith("dia:")?"Roteiro":"Mapa");
+    return `<div class="wish">${post&&post.paisA2?`<span class="flag wish-flag">${L.flag(post.paisA2)}</span>`:`<span class="wish-flag">★</span>`}
+      <div class="c-body"><button type="button" class="link-btn wish-t" data-alvo="${esc(x.alvo)}">${esc(x.titulo||"Dica")}</button><span class="tiny">${esc(place)}${post?` · por ${esc(nameOf(post.uid,post.nome))}`:""}</span></div>
+      <button type="button" class="link-btn tiny" data-unwish="${esc(x.alvo)}" aria-label="Tirar da lista">Tirar</button></div>`; };
+  return `<h2 class="h3 hoje-h">Lista de desejos</h2>
+    ${salvos.length?`<div class="feed wishes">${dicas.map(row).join("")}${nossos.length?`<div class="tiny wish-sec">Do roteiro de Gustavo e Priscila</div>${nossos.map(row).join("")}`:""}</div>`
+    :`<p class="small muted">Toque em "Quero ir" numa dica da comunidade, ou em Salvar num dia do Roteiro ou lugar do Mapa, para montar sua lista.</p>`}`;
 }
 function loadFollowCounts(uid){
   if(C.followCache && C.followCache.uid===uid && Date.now()-C.followCache.t<30000) return;
@@ -380,11 +505,15 @@ function loadFollowCounts(uid){
 function editProfile(){
   if(!C.user) return needLogin();
   const me=C.me||{nome:C.user.displayName||"", insta:"", cidade:"", bio:"", paises:[], foto:googlePhoto(C.user)};
+  let newAvatar = me.avatar||"";
   let paises=(me.paises||[]).slice();
   const all=L.countryOptions().filter(o=>o[0]);
   const dlg=document.createElement("dialog"); dlg.className="sheet profile-sheet";
   dlg.innerHTML=`<form method="dialog" novalidate><header><h2 class="h3">Editar perfil</h2><button type="button" class="icon-btn" data-x aria-label="Fechar">✕</button></header>
     <div class="body">
+      <div class="p-photo"><span id="p-av"></span>
+        <div class="p-photo-btns"><label class="btn secondary" for="p-file">Trocar foto</label><input type="file" id="p-file" accept="image/*" class="sr">
+        <button type="button" class="btn plain" id="p-rmfoto">Remover</button></div></div>
       <div class="field"><label for="p-nome">Nome</label><input type="text" id="p-nome" maxlength="60" autocomplete="name" value="${esc(me.nome||"")}"></div>
       <div class="row2">
         <div class="field"><label for="p-insta">Instagram</label><input type="text" id="p-insta" maxlength="31" autocapitalize="off" spellcheck="false" placeholder="seu.perfil" value="${esc(me.insta||"")}"></div>
@@ -404,6 +533,20 @@ function editProfile(){
   const close=()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); };
   dlg.querySelectorAll("[data-x]").forEach(b=>b.onclick=close);
   dlg.addEventListener("cancel",e=>{ e.preventDefault(); close(); });
+  const drawAv=()=>{
+    const pic = newAvatar || me.foto || "";
+    const n=($d("#p-nome").value||me.nome||"?").trim(); const ini=n.split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
+    $d("#p-av").innerHTML = pic ? `<span class="av" style="--s:84px"><img src="${esc(pic)}" alt="Sua foto" referrerpolicy="no-referrer"></span>` : `<span class="av" style="--s:84px">${esc(ini)}</span>`;
+    $d("#p-rmfoto").hidden = !newAvatar;
+  };
+  drawAv();
+  $d("#p-file").addEventListener("change",async ()=>{
+    const f=$d("#p-file").files[0]; if(!f) return;
+    try{ newAvatar = await shrinkImage(f, 256, .85, true, 140000); drawAv(); }
+    catch(e){ toast("Não deu para usar essa foto. Tente outra."); }
+    $d("#p-file").value="";
+  });
+  $d("#p-rmfoto").onclick=()=>{ newAvatar=""; drawAv(); };
   $d("#p-bio").addEventListener("input",()=>{ $d("#p-bio-n").textContent=$d("#p-bio").value.length; });
   const drawSel=()=>{
     $d("#p-count").textContent = paises.length ? `(${paises.length})` : "";
@@ -424,15 +567,16 @@ function editProfile(){
     e.preventDefault();
     const nome=$d("#p-nome").value.trim(); const err=$d("#p-err");
     if(!nome){ err.textContent="Escreva seu nome."; err.hidden=false; $d("#p-nome").focus(); return; }
-    const data=cleanProfile({nome, insta:$d("#p-insta").value, cidade:$d("#p-cidade").value, bio:$d("#p-bio").value, paises, foto:me.foto});
+    const data=cleanProfile({nome, insta:$d("#p-insta").value, cidade:$d("#p-cidade").value, bio:$d("#p-bio").value, paises, foto:me.foto, avatar:newAvatar});
     if(!C.me) data.criadoEm=TS();
+    if(!newAvatar && me.avatar) data.avatar=firebase.firestore.FieldValue.delete();
     const btn=$d("#p-save"); btn.disabled=true; btn.textContent="Salvando…"; err.hidden=true;
     try{
       await timed(db.collection("profiles").doc(C.user.uid).set(data,{merge:true}));
       const back = await timed(db.collection("profiles").doc(C.user.uid).get({source:"server"}));
       if(!back.exists || back.data().nome!==data.nome) throw {code:"not-saved"};
       if(nome!==C.user.displayName) C.user.updateProfile({displayName:nome}).catch(()=>{});
-      C.profiles[C.user.uid]=Object.assign({id:C.user.uid},C.me||{},data);
+      C.profiles[C.user.uid]=Object.assign({id:C.user.uid},C.me||{},data,{avatar:newAvatar||""});
       close(); toast("Perfil salvo"); L.render();
     }catch(x){ dbError(x,"salvar o perfil"); err.textContent=C.lastError; err.hidden=false; btn.disabled=false; btn.textContent="Salvar"; }
   };
@@ -464,7 +608,7 @@ async function deleteAccount(btn){
   if(!btn.dataset.confirm){ btn.dataset.confirm=1; btn.textContent="Toque de novo para excluir sua conta, seus comentários e seus salvos. Não dá para desfazer."; return; }
   const uid=C.user.uid; btn.disabled=true;
   try{
-    const qs=await Promise.all([db.collection("comments").where("uid","==",uid).get(), db.collection("follows").where("from","==",uid).get(), db.collection("follows").where("to","==",uid).get(), db.collection("users").doc(uid).collection("salvos").get()]);
+    const qs=await Promise.all([db.collection("fotos").where("uid","==",uid).get(), db.collection("posts").where("uid","==",uid).get(), db.collection("comments").where("uid","==",uid).get(), db.collection("follows").where("from","==",uid).get(), db.collection("follows").where("to","==",uid).get(), db.collection("users").doc(uid).collection("salvos").get()]);
     const refs=[].concat(...qs.map(q=>q.docs.map(d=>d.ref)));
     for(let i=0;i<refs.length;i+=400){ const b=db.batch(); refs.slice(i,i+400).forEach(r=>b.delete(r)); await b.commit(); }
     await db.collection("profiles").doc(uid).delete();
