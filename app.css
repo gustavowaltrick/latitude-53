@@ -628,8 +628,8 @@ main.enter .place-chip .flag{animation:wave 1.4s var(--spring) .4s backwards}
 .chip-x{cursor:pointer;color:var(--ink);font:inherit;font-size:14px}
 .chip-x span[aria-hidden]{color:var(--ink-2);font-size:16px}
 .p-err{color:var(--bad);margin:0}
-#p-busca{width:100%;padding:10px 12px;border:1px solid rgba(29,29,31,.1);border-radius:12px;background:rgba(255,255,255,.65);font-size:16px;margin-top:8px}
-:root[data-theme="dark"] #p-busca{background:rgba(0,0,0,.25);border-color:rgba(255,255,255,.12)}
+#p-busca,#p-cbusca,#i-q,[data-q]{width:100%;padding:10px 12px;border:1px solid rgba(29,29,31,.1);border-radius:12px;background:rgba(255,255,255,.65);font-size:16px;margin-top:8px}
+:root[data-theme="dark"] #p-busca,:root[data-theme="dark"] #p-cbusca,:root[data-theme="dark"] #i-q,:root[data-theme="dark"] [data-q]{background:rgba(0,0,0,.25);border-color:rgba(255,255,255,.12)}
 .diag{margin-top:32px}
 .diag:empty{display:none}
 .diag{background:var(--glass-fill);border:1px solid var(--glass-edge);border-radius:var(--r);padding:16px 18px;box-shadow:var(--glass-hi)}
@@ -806,3 +806,40 @@ main.enter .place-chip .flag{animation:wave 1.4s var(--spring) .4s backwards}
 .pmap-leg .lg-p{background:var(--visited-pin);border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
 .city-list .pn .tiny{color:var(--ink-2)}
 .city-list[hidden]{display:none}
+
+/* ===================== VIAGENS COMPARTILHADAS ===================== */
+.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:16px}
+.tripc{display:flex;flex-direction:column;gap:10px;text-align:left;color:inherit;cursor:pointer;border:1px solid var(--glass-edge);background:var(--glass-fill);box-shadow:var(--glass-hi),var(--glass-drop);border-radius:24px;padding:20px;transition:transform .4s var(--spring,cubic-bezier(.2,.8,.2,1))}
+.tripc:hover{transform:translateY(-3px)}
+.tripc-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.tripc-t{margin:0}
+.tripc-flags{font-size:22px;letter-spacing:2px}
+.tripc-who{display:flex;align-items:center;gap:10px;margin-top:auto}
+.tag{font-size:11px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;padding:3px 9px;border-radius:980px}
+.tag.pub{background:var(--good-soft);color:var(--good)}
+.tag.priv{background:var(--accent-soft);color:var(--accent-ink)}
+.av-stack{display:inline-flex}
+.av-stack .av{box-shadow:0 0 0 2px var(--bg)}
+.av-stack .av+.av{margin-left:-9px}
+.invites{display:flex;flex-direction:column;gap:10px;margin:0 0 28px}
+.invite{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-radius:22px;padding:16px;background:linear-gradient(135deg,rgba(52,199,89,.16),rgba(0,113,227,.12)),var(--glass-fill);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi),var(--glass-drop)}
+.invite .c-body{flex:1 1 200px;font-size:15px}
+.crew{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.crew-m{display:flex;align-items:center;gap:10px;border:1px solid var(--glass-edge);background:var(--glass-fill);box-shadow:var(--glass-hi);border-radius:20px;padding:8px 14px 8px 8px}
+.crew-m .m-open{display:flex;align-items:center;gap:10px;border:0;background:none;padding:0;cursor:pointer;color:inherit;text-align:left}
+.crew-m .c-body{display:flex;flex-direction:column}
+.crew-m .m-name{font-weight:600;font-size:15px}
+.crew-m.pend{opacity:.7;border-style:dashed}
+.tmap{border-radius:26px;overflow:hidden;background:var(--glass-fill);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi),var(--glass-drop);aspect-ratio:800/460}
+.tmap svg{display:block;width:100%;height:100%}
+.plan{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.plan li{position:relative;padding-left:16px;font-size:16px}
+.plan li::before{content:"";position:absolute;left:0;top:.62em;width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.plan b{font-variant-numeric:tabular-nums;margin-right:4px}
+.tday.is-today{outline:2px solid var(--visited);outline-offset:-2px}
+.inv-list{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.inv-row{display:flex;align-items:center;gap:12px}
+.inv-row .c-body{flex:1;display:flex;flex-direction:column;min-width:0}
+.inv-row .m-name{font-weight:600}
+.c-me{position:relative}
+.nav-dot{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ff3b30;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;box-shadow:0 0 0 2px var(--bg)}

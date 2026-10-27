@@ -101,6 +101,74 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // ---------- viagens compartilhadas ----------
+    function validTrip(d) {
+      return d.keys().hasOnly(['dono','membros','titulo','resumo','inicio','fim','publica','paradas','criadaEm','atualizadaEm'])
+        && d.dono is string && d.membros is list
+        && d.membros.size() >= 1 && d.membros.size() <= 8 && d.dono in d.membros
+        && str(d.titulo, 80) && d.titulo.size() > 0
+        && str(d.get('resumo',''), 500)
+        && str(d.get('inicio',''), 10) && str(d.get('fim',''), 10)
+        && d.publica is bool
+        && d.get('paradas', []) is list && d.get('paradas', []).size() <= 30;
+    }
+    function tripData(vid) { return get(/databases/$(database)/documents/viagens/$(vid)).data; }
+
+    match /viagens/{vid} {
+      allow read: if resource.data.publica == true || (signedIn() && request.auth.uid in resource.data.membros);
+      allow create: if verified() && validTrip(request.resource.data)
+        && request.resource.data.dono == request.auth.uid
+        && request.resource.data.membros == [request.auth.uid];
+      allow update: if signedIn() && validTrip(request.resource.data) && (
+        // quem organiza pode tudo (inclusive remover pessoas ou passar a organização)
+        request.auth.uid == resource.data.dono
+        // participantes editam a viagem, sem mexer em quem participa
+        || (request.auth.uid in resource.data.membros
+            && request.resource.data.membros == resource.data.membros
+            && request.resource.data.dono == resource.data.dono)
+        // participante sai da viagem
+        || (request.auth.uid in resource.data.membros
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membros','atualizadaEm'])
+            && request.resource.data.membros == resource.data.membros.removeAll([request.auth.uid]))
+        // aceitar um convite
+        || (!(request.auth.uid in resource.data.membros)
+            && exists(/databases/$(database)/documents/convites/$(vid + '_' + request.auth.uid))
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['membros','atualizadaEm'])
+            && request.resource.data.membros == resource.data.membros.concat([request.auth.uid]))
+      );
+      allow delete: if signedIn() && request.auth.uid == resource.data.dono;
+
+      match /dias/{did} {
+        allow read: if tripData(vid).publica == true || (signedIn() && request.auth.uid in tripData(vid).membros);
+        allow create, update: if signedIn() && request.auth.uid in tripData(vid).membros
+          && request.resource.data.keys().hasOnly(['data','cidade','paisA2','titulo','plano','por','em'])
+          && str(request.resource.data.get('data',''), 10)
+          && str(request.resource.data.get('cidade',''), 60)
+          && str(request.resource.data.get('paisA2',''), 2)
+          && str(request.resource.data.get('titulo',''), 100)
+          && str(request.resource.data.get('plano',''), 3000)
+          && str(request.resource.data.get('por',''), 60);
+        allow delete: if signedIn() && request.auth.uid in tripData(vid).membros;
+      }
+    }
+
+    match /convites/{id} {
+      allow read: if signedIn() && (resource.data.para == request.auth.uid || resource.data.de == request.auth.uid);
+      allow create: if verified()
+        && request.resource.data.keys().hasOnly(['viagem','viagemTitulo','de','deNome','para','em'])
+        && request.resource.data.de == request.auth.uid
+        && request.resource.data.para is string && request.resource.data.para != request.auth.uid
+        && request.resource.data.viagem is string
+        && id == request.resource.data.viagem + '_' + request.resource.data.para
+        && request.auth.uid in tripData(request.resource.data.viagem).membros
+        && !(request.resource.data.para in tripData(request.resource.data.viagem).membros)
+        && str(request.resource.data.viagemTitulo, 80)
+        && str(request.resource.data.deNome, 60)
+        && request.resource.data.em == request.time;
+      allow delete: if signedIn() && (resource.data.para == request.auth.uid || resource.data.de == request.auth.uid);
+      allow update: if false;
+    }
+
     match /users/{uid}/salvos/{id} {
       allow read, delete: if isMe(uid);
       allow create, update: if isMe(uid)
