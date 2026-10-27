@@ -101,7 +101,49 @@ function subscribe(){
 }
 
 /* ---------- boot ---------- */
+function installGlass(){
+  if(!document.querySelector(".ambient")){ const a=document.createElement("div"); a.className="ambient"; a.setAttribute("aria-hidden","true"); a.innerHTML="<i></i><i></i><i></i><i></i>"; document.body.insertBefore(a, document.body.firstChild); }
+  let raf=0, last=null;
+  document.addEventListener("pointermove",e=>{
+    if(e.pointerType!=="mouse") return;
+    last=e; if(raf) return;
+    raf=requestAnimationFrame(()=>{ raf=0; const el=last.target.closest && last.target.closest(".tile,.place,.gsec,.group,.col,.hoje-card,.day,.empty-state"); if(!el) return;
+      const r=el.getBoundingClientRect(); el.style.setProperty("--mx",((last.clientX-r.left)/r.width*100).toFixed(1)+"%"); el.style.setProperty("--my",((last.clientY-r.top)/r.height*100).toFixed(1)+"%"); });
+  },{passive:true});
+}
+const reduceMotion = () => { try{ return matchMedia("(prefers-reduced-motion: reduce)").matches; }catch(e){ return false; } };
+let lastShown=null, pillPos=null;
+function choreograph(entering){
+  const view=$("#view"); if(!view) return;
+  // sliding glass pill under the active tab
+  const tabs=$(".tabs"), cur=tabs&&tabs.querySelector('[aria-current="page"]');
+  if(tabs && cur){
+    const pill=document.createElement("span"); pill.className="tab-pill"; pill.setAttribute("aria-hidden","true"); tabs.insertBefore(pill,tabs.firstChild);
+    const to={x:cur.offsetLeft, w:cur.offsetWidth};
+    const from=pillPos||to;
+    pill.style.transition="none"; pill.style.transform=`translateX(${from.x}px)`; pill.style.width=from.w+"px";
+    void pill.offsetWidth; pill.style.transition="";
+    requestAnimationFrame(()=>{ pill.style.transform=`translateX(${to.x}px)`; pill.style.width=to.w+"px"; });
+    pillPos=to;
+    if(entering){ const l=cur.offsetLeft-16, r=cur.offsetLeft+cur.offsetWidth+16; if(l<tabs.scrollLeft||r>tabs.scrollLeft+tabs.clientWidth) tabs.scrollTo({left:Math.max(0,l-tabs.clientWidth/3),behavior:reduceMotion()?"auto":"smooth"}); }
+  }
+  if(!entering) return;
+  view.classList.add("enter");
+  view.querySelectorAll(".hero .wrap > *").forEach((el,i)=>el.style.setProperty("--i",i));
+  view.querySelectorAll(".head-row,.stats,.tile,.place,.gsec,.group,.col,.day,.hoje-card,.empty-state,.map-shell,.table-wrap,.bars,.legend,.country > .h3,.segbar,.sumrow .tile").forEach((el,i)=>{ el.setAttribute("data-anim",""); el.style.setProperty("--i",Math.min(i,14)); });
+  if(!reduceMotion()){
+    view.querySelectorAll(".count b,.stats b").forEach(el=>{
+      const end=parseInt(el.textContent,10); if(!(end>0) || String(end)!==el.textContent.trim()) return;
+      const t0=performance.now(), dur=900+Math.min(end,60)*8;
+      const step=t=>{ const k=Math.min(1,(t-t0)/dur), e=1-Math.pow(1-k,3); el.textContent=String(Math.round(end*e)); if(k<1) requestAnimationFrame(step); };
+      el.textContent="0"; requestAnimationFrame(step);
+    });
+  }
+  setTimeout(()=>{ const v=$("#view"); if(v) v.classList.remove("enter"); },2200);
+}
+
 async function boot(){
+  installGlass();
   const h = (location.hash||"").replace("#","");
   if(VIEWS.some(v=>v[0]===h)) S.view=h;
   if(PUB){
@@ -154,9 +196,14 @@ function render(){
     <main id="view">${S.loaded?safeView():loadingView()}</main>
     ${canWrite()?`<button type="button" class="fab" id="fab-gasto" aria-label="Lançar gasto"><span aria-hidden="true">+</span> Gasto</button>`:""}
     <footer class="site"><div class="wrap"><span>${esc(name)} · Gustavo e Priscila</span><span>Valores são estimativas. Confirme sempre nas fontes oficiais antes de pagar.</span></div></footer>`;
-  window.scrollTo(0,scrollY);
+  const shown = S.loaded ? S.view : "loading";
+  const entering = shown!==lastShown && shown!=="loading";
+  if(entering && lastShown!==null) window.scrollTo(0,0); else window.scrollTo(0,scrollY);
+  S.mapAnim = entering && S.view==="mapa" && !reduceMotion();
+  lastShown = shown;
   bindShell();
   afterRender();
+  try{ choreograph(entering); }catch(e){}
 }
 function safeView(){
   try{ return renderView(); }
@@ -541,6 +588,12 @@ function drawMap(){
     }
     S.picking=null; render(); placeForm(draft);
   });
+  if(S.mapAnim){
+    S.mapAnim=false;
+    g.selectAll("path").filter(function(){ const f=this.style.fill||""; return f.includes("visited")||f.includes("planned")||f.includes("state-soft"); })
+      .style("opacity",0).transition().delay((d,i)=>200+i*12).duration(700).style("opacity",1);
+    mk.attr("r",0).transition().delay((d,i)=>500+i*28).duration(650).ease(d3.easeBackOut.overshoot(2.2)).attr("r",4);
+  }
   mapCtx = {svg,zoom,proj,W,H};
   zoomTo(S.mapZoom,false);
 }
