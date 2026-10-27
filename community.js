@@ -44,6 +44,18 @@ L.addView("privacidade","Privacidade",vPrivacidade,{hidden:true});
 L.addNav(navChip);
 L.onAfterRender(decorate);
 
+/* ---------- botão flutuante "Publicar", em todas as páginas ---------- */
+(function installFab(){
+  if(document.getElementById("fab-post")) return;
+  const b=document.createElement("button"); b.type="button"; b.id="fab-post"; b.className="fab-post"; b.setAttribute("aria-label","Nova publicação");
+  b.innerHTML='<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="fp-l">Publicar</span>';
+  b.onclick=()=>{ if(!C.ready){ toast(C.failed?"A comunidade não carregou. Verifique a internet.":"Só um instante, conectando…"); return; } postSheet("post"); };
+  document.body.appendChild(b); document.body.classList.add("has-fab");
+  // encolhe para só o "+" ao rolar para baixo e volta ao rolar para cima
+  let lastY=window.scrollY, tick=false;
+  window.addEventListener("scroll",()=>{ if(tick) return; tick=true; requestAnimationFrame(()=>{ const y=window.scrollY; if(Math.abs(y-lastY)>6){ b.classList.toggle("mini", y>lastY && y>140); lastY=y; } tick=false; }); },{passive:true});
+})();
+
 /* ---------- load the Firebase SDK, then start ---------- */
 function load(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=SDK+src; s.onload=res; s.onerror=()=>rej(new Error("Não carregou "+src)); document.head.appendChild(s); }); }
 load("firebase-app-compat.js").then(()=>Promise.all([load("firebase-auth-compat.js"),load("firebase-firestore-compat.js")])).then(start).catch(()=>{ C.failed=true; L.render(); });
