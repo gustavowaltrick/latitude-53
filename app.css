@@ -863,3 +863,10 @@ main.enter .place-chip .flag{animation:wave 1.4s var(--spring) .4s backwards}
 @keyframes fab-in{from{transform:translateY(30px) scale(.6);opacity:0}to{transform:none;opacity:1}}
 body.has-fab footer.site{padding-bottom:96px}
 @media (prefers-reduced-motion:reduce){ .fab-post,.fab-post svg,.fab-post .fp-l{animation:none;transition:none} }
+/* ===================== NOSSA VIAGEM (pessoal) ===================== */
+.mv-pick{margin:0 0 22px}
+.mv-pick .chip{cursor:pointer;color:var(--ink);font:inherit;font-size:14px}
+.mv-pick .chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.mv-crew{display:flex;align-items:center;gap:10px;margin-top:14px;color:var(--ink-2)}
+.mv-hero .count{flex-wrap:wrap}
+.hero .mv-crew,.hero .mv-pick{justify-content:center}

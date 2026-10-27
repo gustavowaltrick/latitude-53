@@ -37,7 +37,8 @@ function dbError(e, what){
 L.addView("inicio","Início",vHome);
 L.addView("viagens","Viagens",vViagens,{after:"inicio"});
 L.addView("comunidade","Comunidade",vComunidade,{after:"viagens"});
-L.addView("viagem","Nossa viagem",()=>L.homeView(),{after:"comunidade"});
+L.addView("viagem","Nossa viagem",vMinha,{after:"comunidade"});
+L.addView("destaque","Gustavo e Priscila",()=>L.homeView(),{hidden:true});
 L.addView("trip","Viagem",vTrip,{hidden:true});
 L.addView("perfil","Perfil",vPerfil,{hidden:true});
 L.addView("privacidade","Privacidade",vPrivacidade,{hidden:true});
@@ -166,8 +167,8 @@ const badge = uid => C.admins.has(uid) ? `<span class="badge-autor">Autor</span>
 function when(ts){ const d=ts&&ts.toDate?ts.toDate():null; if(!d) return "agora"; const s=(Date.now()-d)/1000;
   if(s<60) return "agora"; if(s<3600) return Math.floor(s/60)+" min"; if(s<86400) return Math.floor(s/3600)+" h"; if(s<604800) return Math.floor(s/86400)+" d";
   return d.toLocaleDateString("pt-BR",{day:"numeric",month:"short"}); }
-const CVIEWS=["inicio","viagens","trip","comunidade","perfil","privacidade"];
-function refresh(){ decorate(false); if(["inicio","viagens","trip","comunidade","perfil"].includes(L.S.view)) L.render(); }
+const CVIEWS=["inicio","viagens","trip","viagem","destaque","comunidade","perfil","privacidade"];
+function refresh(){ decorate(false); if(["inicio","viagens","trip","viagem","comunidade","perfil"].includes(L.S.view)) L.render(); }
 function needLogin(msg){ toast(msg||"Entre na sua conta para isso."); authSheet("entrar"); }
 function authError(e){
   const m={ "auth/email-already-in-use":"Esse e-mail já tem conta. Use Entrar.", "auth/invalid-email":"E-mail inválido.",
@@ -340,7 +341,7 @@ function tripCard(){
   let now=null; if(running){ now = live ? live.cidade : (stops.filter(s=>s.data<=iso).slice(-1)[0]||{}).cidade; }
   const capa=S.site.capaData||(S.site.capaId?"/_blob/"+S.site.capaId:"");
   const route=stops.filter(s=>s.paisA2).map(s=>`<span class="flag" title="${esc(s.cidade)}">${L.flag(s.paisA2)}</span>`).join('<span class="tc-arrow" aria-hidden="true">→</span>');
-  return `<a class="trip-card" href="#viagem">
+  return `<a class="trip-card" href="#destaque" data-destaque>
     ${capa?`<span class="tc-img"><img src="${esc(capa)}" alt="" loading="lazy"></span>`:""}
     <span class="tc-body">
       <span class="eyebrow">${running?'<span class="live-dot" aria-hidden="true"></span>Ao vivo · ':""}Viagem em destaque</span>
@@ -493,13 +494,11 @@ function vViagens(){
   </div></section>`;
 }
 function openTrip(id){
-  C.tripId=id; C.tripDias=null; if(C.tripUnsub){ C.tripUnsub(); C.tripUnsub=null; }
-  C.tripDoc=null;
+  C.tripId=id; C.tripDoc=null; watchTripDias(id);
   if(!tripById(id)){ db.collection("viagens").doc(id).get().then(d=>{ if(d.exists){ C.tripDoc=Object.assign({id:d.id},d.data()); } else C.tripDoc={id,missing:true}; refreshTrip(); }).catch(()=>{ C.tripDoc={id,missing:true}; refreshTrip(); }); }
-  C.tripUnsub=db.collection("viagens").doc(id).collection("dias").onSnapshot(q=>{ C.tripDias=q.docs.map(d=>Object.assign({id:d.id},d.data())); refreshTrip(); },()=>{ C.tripDias=[]; refreshTrip(); });
   C.tripAnim=true; L.go("trip");
 }
-function refreshTrip(){ if(L.S.view==="trip") L.render(); }
+function refreshTrip(){ if(L.S.view==="trip"||L.S.view==="viagem") L.render(); }
 function planLines(txt){
   return String(txt||"").split(/\n+/).map(l=>l.trim()).filter(Boolean).map(l=>{ const m=l.match(/^(\d{1,2}[:h]\d{2})\s*[-–·]?\s*(.*)$/); return `<li>${m?`<b class="num">${esc(m[1].replace("h",":"))}</b> ${esc(m[2])}`:esc(l)}</li>`; }).join("");
 }
@@ -686,6 +685,127 @@ function tripsForProfile(uid, mine){
   return `<h2 class="h3 hoje-h">Viagens</h2><div class="trips">${list.map(tripCardHtml).join("")}</div>`;
 }
 
+/* ---------- "Nossa viagem": o resumo da viagem de quem está usando o app ---------- */
+const isoToday = () => { const d=new Date(); return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0"); };
+const daysBetween = (a,b) => Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/86400000);
+function pickTrip(){
+  const ts=C.myTrips.slice(); if(!ts.length) return null;
+  if(C.mvSel){ const s=ts.find(t=>t.id===C.mvSel); if(s) return s; }
+  const t=isoToday();
+  const now=ts.find(x=>x.inicio && x.inicio<=t && (!x.fim || x.fim>=t)); if(now) return now;
+  const next=ts.filter(x=>x.inicio && x.inicio>t).sort((a,b)=>a.inicio.localeCompare(b.inicio))[0]; if(next) return next;
+  const undated=ts.find(x=>!x.inicio); if(undated) return undated;
+  return ts.sort((a,b)=>(b.fim||b.inicio||"").localeCompare(a.fim||a.inicio||""))[0];
+}
+function watchTripDias(id){
+  if(C.diasFor===id) return;
+  if(C.tripUnsub){ C.tripUnsub(); C.tripUnsub=null; }
+  C.diasFor=id; C.tripDias=null;
+  C.tripUnsub=db.collection("viagens").doc(id).collection("dias").onSnapshot(q=>{ C.tripDias=q.docs.map(d=>Object.assign({id:d.id},d.data())); refreshTrip(); },()=>{ C.tripDias=[]; refreshTrip(); });
+}
+function tripLive(t){
+  if(!t.inicio) return null; const ms=new Set(t.membros||[]); const start=new Date(t.inicio+"T00:00:00").getTime();
+  const end=t.fim?new Date(t.fim+"T23:59:59").getTime():Infinity;
+  const xs=liveDocs.filter(x=>ms.has(x.uid) && isFinite(x.lat) && isFinite(x.lng) && x.lat!=null && x.em && x.em.toMillis && x.em.toMillis()>=start && x.em.toMillis()<=end)
+    .sort((a,b)=>a.em.toMillis()-b.em.toMillis());
+  return xs[xs.length-1]||null;
+}
+function vMinha(){
+  // os autores continuam vendo a página completa da viagem deles (dados do site privado)
+  if(C.user && C.admins.has(C.user.uid)) return L.homeView();
+  if(!C.ready) return `<section class="band"><div class="wrap"><p class="eyebrow">Nossa viagem</p><h1 class="h1">Carregando…</h1></div></section>`;
+  setTimeout(bindCommunity,0);
+  if(!C.user) return `<section class="hero"><div class="wrap">
+      <p class="eyebrow">Nossa viagem</p><h1 class="h-hero" style="max-width:13ch">Sua próxima viagem, num lugar só.</h1>
+      <p class="lead">Contagem regressiva, a rota no mapa, onde vocês estão agora e o roteiro de cada dia, para você e quem vai junto.</p>
+      <div class="actions home-cta"><button class="btn" type="button" data-login>Criar minha conta</button><button class="btn secondary" type="button" data-destaque>Ver um exemplo</button></div>
+    </div></section>`;
+  const t=pickTrip();
+  if(!t) return `<section class="hero"><div class="wrap">
+      <p class="eyebrow">Nossa viagem</p><h1 class="h-hero" style="max-width:13ch">Para onde vocês vão?</h1>
+      <p class="lead">Crie a viagem, convide quem vai junto e aqui aparece o resumo: dias que faltam, rota, posição ao vivo e o plano de cada dia.</p>
+      ${invitesHtml()}
+      <div class="actions home-cta"><button class="btn" type="button" data-new-trip>Criar minha viagem</button><button class="btn secondary" type="button" data-destaque>Ver um exemplo</button></div>
+    </div></section>`;
+  watchTripDias(t.id); C.tripId=t.id;
+  want(t.membros||[]);
+  const today=isoToday();
+  const dias=(C.diasFor===t.id && C.tripDias ? C.tripDias : []).slice().sort((a,b)=>(a.data||"9").localeCompare(b.data||"9"));
+  const paises=[...new Set((t.paradas||[]).map(p=>p.c).filter(Boolean))];
+  let status="", big="", small="";
+  if(t.inicio && today<t.inicio){ const n=daysBetween(today,t.inicio); big=String(n); small=n===1?"dia para a viagem":"dias para a viagem"; status="antes"; }
+  else if(t.inicio && (!t.fim || today<=t.fim)){ const n=daysBetween(t.inicio,today)+1; const tot=t.fim?daysBetween(t.inicio,t.fim)+1:null; big=tot?`${n}/${tot}`:String(n); small="dia da viagem"; status="durante"; }
+  else if(t.fim && today>t.fim){ big="✓"; small="viagem concluída"; status="depois"; }
+  else { big="–"; small="defina as datas"; status="sem"; }
+  const live = status==="durante" ? tripLive(t) : null;
+  const hoje = dias.find(d=>d.data===today);
+  const prox = dias.filter(d=>d.data && d.data>today).slice(0,3);
+  const others = C.myTrips.length>1 ? C.myTrips.slice().sort((a,b)=>(a.inicio||"9").localeCompare(b.inicio||"9")) : [];
+  const dayCard = d => { const f=d.data?L.fmtDay(d.data):null; return `<article class="day tday ${d.data===today?"is-today":""}">
+      <div class="date-col">${f?`<div class="dnum">${f.n}</div><div class="dmeta">${esc(f.wd)}<br>${esc(f.mo)}</div>`:`<div class="dmeta">sem data</div>`}</div>
+      <div class="day-body">${d.cidade?`<span class="place-chip">${d.paisA2?`<span class="flag">${L.flag(d.paisA2)}</span>`:""}${esc(d.cidade)}</span>`:""}
+        <div class="day-title"><h3 class="h3">${esc(d.titulo||"Dia livre")}</h3></div>${d.plano?`<ul class="plan">${planLines(d.plano)}</ul>`:""}</div></article>`; };
+  return `<section class="hero mv-hero"><div class="wrap">
+    ${others.length?`<div class="chips mv-pick" role="group" aria-label="Escolher viagem">${others.map(x=>`<button type="button" class="chip" data-mv="${esc(x.id)}" aria-pressed="${x.id===t.id}">${esc(x.titulo)}</button>`).join("")}</div>`:""}
+    <p class="eyebrow">${status==="durante"?'<span class="live-dot" aria-hidden="true"></span>Ao vivo · ':""}Nossa viagem${t.inicio?" · "+esc(fmtRange(t.inicio,t.fim)):""}</p>
+    <h1 class="h-hero">${esc(t.titulo)}</h1>
+    ${t.resumo?`<p class="lead">${esc(t.resumo)}</p>`:""}
+    <div class="mv-crew">${stackAv(t.membros||[])}<span class="small">${esc((t.membros||[]).map(u=>nameOf(u).split(" ")[0]).join(", ").replace(/, ([^,]*)$/," e $1"))}</span></div>
+    <div class="count">
+      <div><b>${esc(big)}</b><span>${esc(small)}</span></div>
+      <div><b class="num">${(t.paradas||[]).length}</b><span>${(t.paradas||[]).length===1?"destino":"destinos"}</span></div>
+      <div><b class="num">${paises.length}</b><span>${paises.length===1?"país":"países"}</span></div>
+      <div><b class="num">${dias.length}</b><span>${dias.length===1?"dia planejado":"dias planejados"}</span></div>
+    </div>
+    <div class="actions home-cta"><button class="btn" type="button" data-trip="${esc(t.id)}">Abrir o roteiro</button>${status==="durante"?`<button class="btn secondary" type="button" data-new-post="checkin">📍 Fazer check-in</button>`:""}<button class="btn secondary" type="button" data-invite-mv>Convidar</button></div>
+  </div></section>
+
+  ${(t.paradas||[]).length?`<section class="band alt"><div class="wrap">
+    <p class="eyebrow">${status==="durante"?"Estamos aqui":"A rota"}</p>
+    <h2 class="h2" style="margin-bottom:6px">${live?`Agora em ${esc(live.cidade||"…")}.`:hoje&&hoje.cidade?`Hoje em ${esc(hoje.cidade)}.`:`${esc((t.paradas[0]||{}).n||"")} ${t.paradas.length>1?"→ "+esc(t.paradas[t.paradas.length-1].n):""}`}</h2>
+    <p class="small muted" style="margin:0 0 18px">${live?`Último check-in ${esc(L.relTime(live.em.toMillis()))} por ${esc(nameOf(live.uid,live.nome).split(" ")[0])}.`:status==="durante"?"Façam check-in pelo botão acima para o ponto se mover no mapa.":"Durante a viagem, os check-ins de quem vai junto mostram aqui onde vocês estão."}</p>
+    <div class="tmap" id="mv-map" data-trip="" role="img" aria-label="Mapa da rota"></div>
+    <ol class="rota-stops">${t.paradas.map(p=>`<li class="rs ${live&&L.nrm(live.cidade)===L.nrm(p.n)?"agora":"proximo"}"><span class="rs-dot" aria-hidden="true"></span><span class="flag">${L.flag(p.c)}</span><span class="rs-n">${esc(p.n)}</span><span class="tiny">${esc(L.countryName(p.c))}</span></li>`).join("")}</ol>
+  </div></section>`:""}
+
+  <section class="band"><div class="wrap">
+    <div class="head-row"><div><p class="eyebrow">${hoje?"Hoje":"Próximos dias"}</p><h2 class="h2">${hoje?esc(hoje.titulo||"O plano de hoje."):status==="depois"?"Como foi a viagem.":"O que vem pela frente."}</h2></div><button class="btn secondary" type="button" data-trip="${esc(t.id)}">Ver tudo</button></div>
+    ${C.diasFor===t.id && C.tripDias===null ? `<p class="small muted">Carregando o roteiro…</p>`
+      : (hoje||prox.length) ? (hoje?[hoje]:[]).concat(prox).map(dayCard).join("")
+      : status==="depois" && dias.length ? dias.slice(-3).map(dayCard).join("")
+      : `<div class="empty-state"><p class="h3">Roteiro em branco</p><p class="small">Abra o roteiro e adicionem os dias. Cada um edita do próprio celular.</p><p style="margin-top:12px"><button class="btn" type="button" data-trip="${esc(t.id)}">Montar o roteiro</button></p></div>`}
+  </div></section>`;
+}
+function drawMyTripMap(animate){
+  const el=document.getElementById("mv-map"); if(!el || el.querySelector("svg")) return;
+  if(!window.d3 || !window.WORLD){ if(!el.dataset.wait){ el.dataset.wait=1; L.loadMapLib().then(ok=>{ if(ok) drawMyTripMap(animate); }); } return; }
+  const t=pickTrip(); if(!t) return;
+  const pts=(t.paradas||[]).filter(p=>isFinite(p.la)&&isFinite(p.lo)).map(p=>[p.lo,p.la]); if(!pts.length) return;
+  const today=isoToday(); const live=(t.inicio&&today>=t.inicio&&(!t.fim||today<=t.fim))?tripLive(t):null;
+  const all=pts.concat(live?[[live.lng,live.lat]]:[]);
+  const d3=window.d3, W=800, H=460;
+  const feats=topojson.feature(WORLD, WORLD.objects.countries).features.filter(f=>f.properties.a2!=="AQ");
+  const xs=all.map(p=>p[0]), ys=all.map(p=>p[1]); const cx=(Math.min(...xs)+Math.max(...xs))/2, cy=(Math.min(...ys)+Math.max(...ys))/2;
+  const w=Math.max(Math.max(...xs)-Math.min(...xs),10)*1.3, h=Math.max(Math.max(...ys)-Math.min(...ys),6)*1.3;
+  const proj=d3.geoNaturalEarth1().fitExtent([[40,40],[W-40,H-40]],{type:"MultiPoint",coordinates:[[cx-w/2,cy-h/2],[cx+w/2,cy+h/2]]});
+  const path=d3.geoPath(proj); const cs=new Set((t.paradas||[]).map(p=>p.c));
+  const svg=d3.select(el).append("svg").attr("viewBox",`0 0 ${W} ${H}`).attr("preserveAspectRatio","xMidYMid slice");
+  svg.append("g").selectAll("path").data(feats).join("path").attr("d",path).attr("class",f=>cs.has(f.properties.a2)?"rm-land trip":"rm-land");
+  if(pts.length>1) svg.append("path").attr("class","rm-plan").attr("d",path({type:"LineString",coordinates:pts}));
+  // trecho já percorrido: paradas até a do check-in mais recente
+  if(live){ let k=-1; (t.paradas||[]).forEach((p,i)=>{ if(L.nrm(p.n)===L.nrm(live.cidade)) k=i; });
+    const done=(k>=0?pts.slice(0,k+1):pts.slice(0,1)).concat([[live.lng,live.lat]]);
+    if(done.length>1){ const ln=svg.append("path").attr("class","rm-done").attr("d",path({type:"LineString",coordinates:done}));
+      if(animate && !L.reduceMotion()){ const len=ln.node().getTotalLength(); ln.attr("stroke-dasharray",len).attr("stroke-dashoffset",len).transition().duration(1400).ease(d3.easeCubicInOut).attr("stroke-dashoffset",0); } } }
+  const xy=pts.map(p=>proj(p));
+  (t.paradas||[]).forEach((p,i)=>{ if(!xy[i]) return; const [x,y]=xy[i];
+    svg.append("circle").attr("cx",x).attr("cy",y).attr("r",7).attr("class","rm-stop");
+    const crowdR=xy.some((q,j)=>j!==i && q[0]>x && q[0]-x<140 && Math.abs(q[1]-y)<30);
+    svg.append("text").attr("x",crowdR?x-13:x+13).attr("y",y+7).attr("text-anchor",crowdR?"end":"start").attr("class","rm-lbl").text(p.n); });
+  if(live){ const [x,y]=proj([live.lng,live.lat]); const g=svg.append("g").attr("class","rm-now").attr("transform",`translate(${x},${y})`);
+    g.append("circle").attr("r",10).attr("class","rm-pulse"); g.append("circle").attr("r",10).attr("class","rm-pulse two"); g.append("circle").attr("r",9).attr("class","rm-core"); }
+}
+
 /* ---------- Comunidade view ---------- */
 function loadMembers(){
   if(C.loadingMembers || !C.ready) return;
@@ -866,6 +986,7 @@ function pushLive(){
     .map(x=>({lat:x.lat, lng:x.lng, cidade:x.cidade||"", paisA2:x.paisA2||"", t:x.em&&x.em.toMillis?x.em.toMillis():0}))
     .sort((a,b)=>a.t-b.t);
   L.setLive(list);
+  if(L.S.view==="viagem" && C.myTrips.length) L.render();
 }
 
 /* ---------- mapa da comunidade ---------- */
@@ -956,6 +1077,9 @@ function bindCommunity(){
     if(e.target.closest("[data-go-me]")){ C.perfilUid=C.user.uid; L.go("perfil"); return; }
     const fl=e.target.closest("[data-filtro]"); if(fl){ C.filtro=fl.dataset.filtro; L.render(); return; }
     const al=e.target.closest("[data-alvo]"); if(al) return goTo(al.dataset.alvo);
+    const ds=e.target.closest("[data-destaque]"); if(ds){ e.preventDefault(); L.go("destaque"); window.scrollTo(0,0); return; }
+    const mv=e.target.closest("[data-mv]"); if(mv){ C.mvSel=mv.dataset.mv; C.tripAnim=true; L.render(); return; }
+    if(e.target.closest("[data-invite-mv]")){ const t=pickTrip(); if(t) inviteSheet(t); return; }
     const tr=e.target.closest("[data-trip]"); if(tr) return openTrip(tr.dataset.trip);
     if(e.target.closest("[data-new-trip]")) return tripSheet(null);
     const io=e.target.closest("[data-inv-ok]"); if(io) return acceptInvite(io.dataset.invOk);
@@ -984,7 +1108,7 @@ function bindCommunity(){
   });
 }
 // the page re-renders #view; rebind when a community view is shown
-L.onAfterRender(entering=>{ const v=document.getElementById("view"); if(v && CVIEWS.includes(L.S.view)){ delete v.dataset.cb; bindCommunity(); } drawCommunityMap(entering); drawProfileMap(entering||C.pmapAnim); C.pmapAnim=false; drawTripMap(entering||C.tripAnim); C.tripAnim=false; });
+L.onAfterRender(entering=>{ const v=document.getElementById("view"); if(v && CVIEWS.includes(L.S.view)){ delete v.dataset.cb; bindCommunity(); } drawCommunityMap(entering); drawProfileMap(entering||C.pmapAnim); C.pmapAnim=false; drawTripMap(entering||C.tripAnim); drawMyTripMap(entering||C.tripAnim); C.tripAnim=false; });
 
 function goTo(alvo){
   const [tipo,id]=alvo.split(":"); C.open.add(alvo);
@@ -1018,7 +1142,7 @@ function vPerfil(){
         ${p&&p.bio?`<p class="lead" style="margin-top:10px">${esc(p.bio)}</p>`:""}
         <div class="ph-stats"><span><b class="num">${fc?fc.seguidores:"–"}</b> ${fc&&fc.seguidores===1?"seguidor":"seguidores"}</span><span><b class="num">${fc?fc.seguindo:"–"}</b> seguindo</span><span><b class="num">${(p&&p.paises||[]).length}</b> ${(p&&p.paises||[]).length===1?"país":"países"}</span>${cidadesOf(p).length?`<span><b class="num">${cidadesOf(p).length}</b> ${cidadesOf(p).length===1?"cidade":"cidades"}</span>`:""}</div>
         ${p&&p.proximo?`<p class="dest-to" style="margin-top:10px">✈︎ Próximo destino: <b>${esc(p.proximo)}</b></p>`:""}
-        <div class="actions" style="margin-top:16px">${mine?`<button class="btn secondary" type="button" data-edit-me>Editar perfil e mapa</button><button class="btn plain" type="button" data-logout>Sair</button>`:followBtn(uid)}${C.admins.has(uid)?`<a class="btn plain" href="#viagem">Ver a viagem</a>`:""}</div>
+        <div class="actions" style="margin-top:16px">${mine?`<button class="btn secondary" type="button" data-edit-me>Editar perfil e mapa</button><button class="btn plain" type="button" data-logout>Sair</button>`:followBtn(uid)}${C.admins.has(uid)?`<button class="btn plain" type="button" data-destaque>Ver a viagem</button>`:""}</div>
       </div>
     </div>
     ${mine && C.lastError?`<div class="verify-box"><strong>Algo não funcionou</strong><span class="small">${esc(C.lastError)}</span></div>`:""}
