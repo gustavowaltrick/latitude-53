@@ -6,12 +6,16 @@ const L = window.LAT53;
 const CFG = window.FIREBASE_CONFIG;
 if(!L || !CFG || !CFG.apiKey) return;
 
-const SDK = "https://www.gstatic.com/firebasejs/10.14.1/";
+const SDK = "vendor/";   // Firebase 10.14.1 servido pelo próprio site (fica em cache no celular)
+const CACHE_KEY = "lat53-user";
+function cachedUser(){ try{ return JSON.parse(localStorage.getItem(CACHE_KEY)||"null"); }catch(e){ return null; } }
+function cacheUser(u){ try{ if(u) localStorage.setItem(CACHE_KEY, JSON.stringify(u)); else localStorage.removeItem(CACHE_KEY); }catch(e){} }
 const C = {
   ready:false, user:null, verified:false, me:null, admins:new Set(),
   comments:[], byTarget:{}, profiles:{}, following:new Set(), saved:{},
-  open:new Set(), perfilUid:null, filtro:"todos", members:null, unsub:[]
+  open:new Set(), perfilUid:null, filtro:"todos", members:null, unsub:[], authKnown:false
 };
+{ const cu=cachedUser(); if(cu && cu.uid) C.profiles[cu.uid]={id:cu.uid, nome:cu.nome||"", foto:cu.foto||""}; }
 let fb=null, auth=null, db=null;
 const esc=L.esc, toast=L.toast;
 const TS = () => firebase.firestore.FieldValue.serverTimestamp();
@@ -41,6 +45,7 @@ load("firebase-app-compat.js").then(()=>Promise.all([load("firebase-auth-compat.
 function start(){
   fb = firebase.initializeApp(CFG);
   auth = firebase.auth(); auth.languageCode = "pt";
+  auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(()=>{ C.noStorage=true; });
   db = firebase.firestore();
   C.ready = true;
   db.collection("admins").get().then(q=>{ C.admins=new Set(q.docs.map(d=>d.id)); refresh(); }).catch(()=>{});
@@ -51,6 +56,9 @@ function start(){
   },()=>{});
   auth.getRedirectResult().catch(e=>authError(e));
   auth.onAuthStateChanged(async u=>{
+    const had=cachedUser(); const first=!C.authKnown; C.authKnown=true;
+    if(!u && first && had && had.uid) toast("Sua sessão terminou neste aparelho. Entre de novo.");
+    cacheUser(u ? {uid:u.uid, nome:(C.profiles[u.uid]&&C.profiles[u.uid].nome)||u.displayName||"", foto:googlePhoto(u)} : null);
     C.unsub.forEach(f=>f()); C.unsub=[]; C.user=u; C.me=null; C.following=new Set(); C.saved={};
     if(u){
       C.verified = !!u.emailVerified;
@@ -59,7 +67,7 @@ function start(){
         const snap=await timed(ref.get({source:"server"}));
         if(!snap.exists){ await timed(ref.set(cleanProfile({nome:u.displayName||(u.email||"").split("@")[0], foto:googlePhoto(u), insta:"", cidade:"", bio:"", paises:[], criadoEm:TS()}))); }
       }catch(e){ dbError(e,"criar seu perfil"); }
-      C.unsub.push(ref.onSnapshot(s=>{ C.me=s.exists?Object.assign({id:u.uid},s.data()):null; if(C.me){ C.profiles[u.uid]=C.me; if(C.members){ const i=C.members.findIndex(m=>m.id===u.uid); if(i>=0) C.members[i]=C.me; else C.members.unshift(C.me); } } L.render(); },()=>{}));
+      C.unsub.push(ref.onSnapshot(s=>{ C.me=s.exists?Object.assign({id:u.uid},s.data()):null; if(C.me){ C.profiles[u.uid]=C.me; cacheUser({uid:u.uid, nome:C.me.nome||"", foto:C.me.foto||""}); if(C.members){ const i=C.members.findIndex(m=>m.id===u.uid); if(i>=0) C.members[i]=C.me; else C.members.unshift(C.me); } } L.render(); },()=>{}));
       C.unsub.push(db.collection("follows").where("from","==",u.uid).onSnapshot(q=>{ C.following=new Set(q.docs.map(d=>d.data().to)); refresh(); },()=>{}));
       C.unsub.push(db.collection("users").doc(u.uid).collection("salvos").onSnapshot(q=>{ C.saved={}; q.docs.forEach(d=>C.saved[d.id]=d.data()); refresh(); },()=>{}));
     }
@@ -124,9 +132,13 @@ const icon = {
 
 /* ---------- nav chip ---------- */
 function navChip(){
-  if(!C.ready) return "";
-  if(!C.user) return `<button type="button" class="pill-btn" id="c-entrar">Entrar</button>`;
-  return `<button type="button" class="icon-btn c-me" id="c-me" aria-label="Meu perfil">${avatar(C.user.uid,28)}</button>`;
+  if(C.user) return `<button type="button" class="icon-btn c-me" id="c-me" aria-label="Meu perfil">${avatar(C.user.uid,28)}</button>`;
+  if(!C.authKnown){
+    const cu=cachedUser();
+    if(cu && cu.uid) return `<span class="icon-btn c-me is-wait" aria-label="Conectando sua conta">${avatar(cu.uid,28)}</span>`;
+    return `<span class="pill-btn is-wait" aria-label="Conectando">…</span>`;
+  }
+  return `<button type="button" class="pill-btn" id="c-entrar">Entrar</button>`;
 }
 
 /* ---------- decorations on days and places ---------- */
@@ -212,6 +224,7 @@ function authSheet(mode){
         ${cad?`<div class="field"><label for="a-nome">Seu nome</label><input type="text" id="a-nome" autocomplete="name" maxlength="60" required></div>`:""}
         <div class="field"><label for="a-email">E-mail</label><input type="text" inputmode="email" id="a-email" autocomplete="email" autocapitalize="off" spellcheck="false" required></div>
         ${mode!=="senha"?`<div class="field"><label for="a-senha">Senha</label><input type="password" id="a-senha" autocomplete="${cad?"new-password":"current-password"}" minlength="6" required>${cad?`<span class="help">Pelo menos 6 caracteres.</span>`:`<button type="button" class="link-btn small" data-m="senha" style="align-self:flex-start">Esqueci a senha</button>`}</div>`:""}
+        ${C.noStorage?`<p class="tiny p-err">Este navegador não está guardando dados do site (modo privado ou bloqueio de dados). Você vai precisar entrar toda vez.</p>`:""}
         ${cad?`<p class="tiny">Ao criar a conta, seu nome e o que você publicar ficam visíveis para outros membros. Seu e-mail não aparece para ninguém. <button type="button" class="link-btn tiny" data-priv>Como usamos seus dados</button></p>`:""}
       </div>
       <footer>${mode==="senha"?`<button type="button" class="btn plain" data-m="entrar">Voltar</button>`:""}<span class="sp"></span><button type="submit" class="btn">${cad?"Criar conta":mode==="senha"?"Enviar link":"Entrar"}</button></footer></form>`;
