@@ -215,6 +215,7 @@ function render(){
   const entering = shown!==lastShown && shown!=="loading";
   if(entering && lastShown!==null) window.scrollTo(0,0); else window.scrollTo(0,scrollY);
   S.mapAnim = entering && S.view==="mapa" && !reduceMotion();
+  if(entering && S.view==="inicio") S._routeAnim = true;
   lastShown = shown;
   bindShell();
   afterRender();
@@ -289,6 +290,7 @@ function vInicio(){
     </div>
   </div>
   <div class="wrap">${cover}</div></section>
+  ${routeHtml()}
   <section class="band alt"><div class="wrap">
     <div class="head-row"><div><p class="eyebrow">Próximas paradas</p><h2 class="h2">Dezembro em três países.</h2></div><a href="#roteiro" class="btn secondary">Ver roteiro completo</a></div>
     <div class="tiles">${next.map(d=>{const f=fmtDay(d.data);return `<div class="tile"><span class="place-chip"><span class="flag">${flag(d.paisA2)}</span>${esc(d.cidade||countryName(d.paisA2))} · ${esc(f.short)}</span><h3 class="h3">${esc(d.titulo||"")}</h3><p class="small muted" style="margin:0">${esc(d.resumo||"")}</p><a class="more" href="#roteiro">Ver o dia ›</a></div>`;}).join("") || `<div class="empty-state"><p class="h3">Roteiro vazio</p><p class="small">Adicione o primeiro dia na aba Roteiro.</p></div>`}</div>
@@ -299,7 +301,8 @@ function vInicio(){
       <div class="tile"><p class="eyebrow" style="margin:0">Guia</p><h3 class="h3">Documentos, transporte e lugares fora da rota</h3><p class="small muted" style="margin:0">Portugal, Países Baixos e Irlanda, com fontes.</p><a class="more" href="#guia">Ler o guia ›</a></div>
       ${!isPrivateNow()?`<div class="tile"><p class="eyebrow" style="margin:0">Preparação</p><h3 class="h2 num">${chkDone}/${chk.length}</h3><p class="small muted" style="margin:0">itens prontos · ${eur(custoPrev)} previstos</p><a class="more" href="#checklists">Ver checklists ›</a></div>`:""}
     </div>
-  </div></section>`;
+  </div></section>
+  ${custoRealHtml()}`;
 }
 
 function vRoteiro(){
@@ -321,6 +324,7 @@ function dayHtml(d){
       <span class="place-chip"><span class="flag">${flag(d.paisA2)}</span>${esc(d.cidade||"")}${d.cidade&&d.paisA2?" · ":""}${esc(d.paisA2?countryName(d.paisA2):"")}</span>
       <div class="day-title"><h2 class="h2">${esc(d.titulo||"")}</h2>${editBtn(`data-act="edit-day" data-id="${esc(d.id)}"`)}</div>
       ${d.resumo?`<p class="day-sum">${esc(d.resumo)}</p>`:""}
+      <div class="day-pc">${pcBtn("dia:"+d.id)}</div>
       <ul class="items">${its.map(i=>`<li class="item">
         <span class="time">${esc(i.hora||"")}</span>
         <div><div><span class="tag ${esc(i.tipo||"")}">${esc(TIPOS[i.tipo]||"Item")}</span><span class="t">${esc(i.titulo||"")}</span></div>
@@ -429,7 +433,7 @@ function placeCard(l){
     ${l.nota?`<div class="note">${esc(l.nota)}</div>`:""}
     ${fotos.length?`<div class="thumbs">${fotos.slice(0,6).map(s=>`<img src="${esc(s)}" alt="Foto em ${esc(l.cidade||"")}" loading="lazy">`).join("")}</div>`:""}
     ${links.length?`<div class="links">${links.map(x=>`<a href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener">${esc(x.label||"Link")} ↗</a>`).join("")}</div>`:""}
-    ${editBtn(`data-act="edit-place" data-id="${esc(l.id)}" style="align-self:flex-start;opacity:1"`)}
+    <div class="place-acts">${pcBtn("lugar:"+l.id)}${editBtn(`data-act="edit-place" data-id="${esc(l.id)}" style="opacity:1"`)}</div>
   </div>`;
 }
 
@@ -477,6 +481,7 @@ function vCustos(){
       <div class="tile"><span class="tiny">Gasto até agora</span><b>${eur(real)}</b><span class="sub">${brl(real*cb)}</span></div>
       <div class="tile"><span class="tiny">${teto?"Sobra do orçamento":"Orçamento"}</span><b>${teto?eur(teto-Math.max(prev,real)):"Sem teto"}</b><span class="sub">${teto?`Teto ${eur(teto)} · ${brl((teto-Math.max(prev,real))*cb)}`:"Defina o teto nos ajustes"}</span></div>
     </div>
+    ${canWrite()?`<label class="pub-toggle tile" for="pub-custos"><input type="checkbox" id="pub-custos" ${S.site.custosPublico?"checked":""}><span><strong>Mostrar "Quanto custou de verdade" no site público</strong><span class="tiny">Só os totais por categoria (planejado e gasto). Itens, notas e reservas continuam privados. Atualiza sozinho e chega aos seguidores na atualização das 20h.</span></span></label>`:""}
     ${semValor?`<p class="small muted" style="margin:-16px 0 28px">${semValor} ${semValor===1?"item ainda sem valor":"itens ainda sem valor"} (passagens e seguro, por exemplo). O total vai subir quando forem preenchidos.</p>`:""}
     ${byCat.length?`<h2 class="h3" style="margin-bottom:16px">Por categoria</h2><div class="bars">${byCat.map(x=>`<div class="bar"><span>${esc(x.cat)}</span><div class="track"><div class="fill" style="width:${(x.v/maxV*100).toFixed(1)}%"></div></div><span class="v">${eur(x.v)}</span></div>`).join("")}</div>`:""}
     ${rows.length?`<div class="table-wrap"><table><thead><tr><th>Item</th><th>Categoria</th><th>País</th><th class="r">Previsto</th><th class="r">Real</th><th class="r">Em reais</th></tr></thead><tbody>
@@ -514,6 +519,7 @@ function afterRender(){
     const gb = e.target.closest("[data-guide]"); if(gb){ S.guiaSel=gb.dataset.guide; render(); return; }
     const hb = e.target.closest("[data-hoje]"); if(hb){ const n=+hb.dataset.hoje; S.hojeOff = n===0 ? 0 : S.hojeOff+n; render(); return; }
     const cp = e.target.closest("[data-copy]"); if(cp){ const txt=cp.dataset.copy; try{ navigator.clipboard.writeText(txt).then(()=>toast("Código copiado"),()=>toast(txt)); }catch(err){ toast(txt); } return; }
+    const pc = e.target.closest("[data-postcard]"); if(pc){ postcardFor(pc.dataset.postcard); return; }
     const a = e.target.closest("[data-act]"); if(!a) return;
     const id=a.dataset.id, act=a.dataset.act;
     if(!canWrite() && act!=="cancel-pick") return;
@@ -536,10 +542,13 @@ function afterRender(){
     if(c && canWrite()){ patch("checklists",c.dataset.check,{feito:c.checked}); }
     if(e.target.id==="f-estado-filtro"){ S.fEstado=e.target.value; render(); return; }
     if(e.target.id==="f-ano-filtro"){ S.fAno=e.target.value; render(); return; }
+    if(e.target.id==="pub-custos" && canWrite()){ setCustosPublico(e.target.checked); return; }
     if(e.target.id==="cambio" && canWrite()){ const n=num(e.target.value); if(n&&n>0){ write("privado","config",Object.assign({},S.priv,{cambio:n})).then(ok=>ok&&toast("Câmbio atualizado")); } }
   };
   const cov = $("#add-cover"); if(cov) cov.onclick=openSettings;
   if(S.view==="mapa"){ try{ drawMap(); }catch(e){ showFatal("Mapa: "+((e&&e.message)||e)); } }
+  if(S.view==="inicio" && $("#rota-map")){ try{ drawRoute(S._routeAnim); }catch(e){} S._routeAnim=false; }
+  try{ syncResumo(); }catch(e){}
 }
 
 /* ---------- map ---------- */
@@ -892,6 +901,7 @@ function openSettings(){
     },
     onSave:async(o,ctx)=>{
       const site = {nome:o.nome||"Latitude 53", eyebrow:o.eyebrow, subtitulo:o.subtitulo, partida:o.partida||"2026-12-22", capaId:ctx.capaId};
+      if(S.site.custosPublico){ site.custosPublico=true; if(S.site.resumoCustos) site.resumoCustos=S.site.resumoCustos; }
       const ok1 = await write("config","site",site);
       const ok2 = await write("privado","config",Object.assign({},S.priv,{cambio:o.cambio||6.3,teto:o.teto}));
       return ok1&&ok2;
@@ -907,7 +917,7 @@ async function exportPublic(){
     const [css,js,world,maplib,states] = await Promise.all(["app.css","app.js","world.js","maplib.js","states.js"].map(f=>fetch(f).then(r=>{ if(!r.ok) throw new Error(f); return r.text(); })));
     const lugares = [];
     for(const l of S.lugares){ const c=Object.assign({},l); c.fotosData=[]; for(const id of (l.fotos||[])) c.fotosData.push(await toDataUrl(id,1200)); lugares.push(c); }
-    const site = Object.assign({},S.site); if(site.capaId){ site.capaData = await toDataUrl(site.capaId,2000); }
+    const site = Object.assign({},S.site); if(!site.custosPublico) delete site.resumoCustos; if(site.capaId){ site.capaData = await toDataUrl(site.capaId,2000); }
     const data = {site, dias:S.dias, itens:S.itens, lugares, guia:S.guia};
     const safe = s => s.replace(/<\/script/gi,"<\\/script").replace(/<!--/g,"<\\!--");
     const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>${esc(site.nome||"Latitude 53")}</title><style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}\n${css}</style></head><body><div id="app"></div>
@@ -919,8 +929,266 @@ async function exportPublic(){
   }catch(e){ if(e && e.code==="cancelled") return; toast("Não deu para gerar o arquivo."); }
 }
 
+/* ---------- rota da viagem (mapa animado + posição atual) ---------- */
+S.live = [];
+function coordOf(cidade,pais){
+  const k=nrm(cidade); if(!k) return null;
+  const l=S.lugares.find(x=>nrm(x.cidade)===k && (!pais||!x.paisA2||x.paisA2===pais) && x.lat!=null && x.lng!=null && isFinite(x.lat) && isFinite(x.lng));
+  if(l) return [+l.lng,+l.lat];
+  const c=canonCity(cidade,pais); return c?[c.lng,c.lat]:null;
+}
+function routeStops(){
+  const out=[];
+  sortedDays().forEach(d=>{ if(!d.cidade) return; const last=out[out.length-1];
+    if(last && nrm(last.cidade)===nrm(d.cidade)){ last.ate=d.data||last.ate; return; }
+    const ll=coordOf(d.cidade,d.paisA2); if(!ll) return;
+    out.push({cidade:d.cidade, paisA2:d.paisA2||"", data:d.data||"", ate:d.data||"", ll}); });
+  return out;
+}
+/* where are we now? latest check-in by the authors wins; otherwise the itinerary by date */
+function routeNow(stops){
+  const t=todayISO(); let ci=-1;
+  stops.forEach((s,i)=>{ if(s.data && s.data<=t) ci=i; });
+  const live = S.live.length ? S.live[S.live.length-1] : null;
+  const first=stops[0], last=stops[stops.length-1];
+  const started = first && first.data && t>=first.data;
+  const ended = last && last.ate && t>last.ate;
+  let pos=null, label="";
+  if(live && started){ pos=[live.lng,live.lat]; label=live.cidade||"Check-in"; }
+  else if(ci>=0){ pos=stops[ci].ll; label=stops[ci].cidade; }
+  else if(first){ pos=first.ll; label=first.cidade; }
+  return {ci, pos, label, live:started?live:null, started:!!started, ended:!!ended};
+}
+function routeHtml(){
+  const stops=routeStops(); if(stops.length<2) return "";
+  const now=routeNow(stops); const t=todayISO();
+  const fmt=s=>{ const a=fmtDay(s.data).short; return s.ate&&s.ate!==s.data?`${a} a ${fmtDay(s.ate).short}`:a; };
+  const head = now.ended ? "Chegamos." : now.started ? `Agora em ${esc(now.label)}.` : "A rota.";
+  const sub = now.live ? `Último check-in ${esc(relTime(now.live.t))}${now.live.cidade?" em "+esc(now.live.cidade):""}.`
+    : now.started ? "Posição pelo roteiro do dia. Os check-ins aparecem aqui em tempo real." : `Começa em ${esc(fmtDay(stops[0].data).short.replace(/\.$/,""))}. Durante a viagem, este mapa mostra onde estamos.`;
+  return `<section class="band alt rota"><div class="wrap">
+    <div class="head-row"><div><p class="eyebrow">${now.started&&!now.ended?'<span class="live-dot" aria-hidden="true"></span>Ao vivo':"Estamos aqui"}</p><h2 class="h2">${head}</h2><p class="small muted" style="margin:6px 0 0">${sub}</p></div></div>
+    <div class="rota-map" id="rota-map" role="img" aria-label="Mapa da rota da viagem"></div>
+    <ol class="rota-stops">${stops.map((s,i)=>{ const st = s.ate && s.ate<t ? "feito" : (s.data<=t ? "agora" : "proximo");
+      return `<li class="rs ${st}"><span class="rs-dot" aria-hidden="true"></span><span class="flag">${flag(s.paisA2)}</span><span class="rs-n">${esc(s.cidade)}</span><span class="tiny">${esc(fmt(s))}</span></li>`; }).join("")}</ol>
+  </div></section>`;
+}
+function relTime(ms){ if(!ms) return "agora"; const s=(Date.now()-ms)/1000; if(s<90) return "agora mesmo"; if(s<3600) return `há ${Math.round(s/60)} min`; if(s<86400) return `há ${Math.round(s/3600)} h`; return new Date(ms).toLocaleDateString("pt-BR",{day:"numeric",month:"short"}); }
+function drawRoute(animate){
+  const el=$("#rota-map"); if(!el) return;
+  if(!window.d3 || !window.WORLD){ if(!el.dataset.wait){ el.dataset.wait=1; loadMapLib().then(ok=>{ if(ok && $("#rota-map")) drawRoute(animate); }); } return; }
+  const d3=window.d3, stops=routeStops(); if(stops.length<2) return;
+  const now=routeNow(stops);
+  el.innerHTML="";
+  const W=800, H=560;
+  const feats=topojson.feature(WORLD, WORLD.objects.countries).features.filter(f=>f.properties.a2!=="AQ");
+  const pts=stops.map(s=>s.ll).concat(now.pos?[now.pos]:[]);
+  const proj=d3.geoNaturalEarth1().fitExtent([[70,60],[W-70,H-50]],{type:"MultiPoint",coordinates:pts});
+  const path=d3.geoPath(proj);
+  const trip=new Set(stops.map(s=>s.paisA2));
+  const svg=d3.select(el).append("svg").attr("viewBox",`0 0 ${W} ${H}`).attr("preserveAspectRatio","xMidYMid slice");
+  svg.append("g").selectAll("path").data(feats).join("path").attr("d",path)
+    .attr("class",f=>trip.has(f.properties.a2)?"rm-land trip":"rm-land");
+  const line=coords=>({type:"LineString",coordinates:coords});
+  const all=stops.map(s=>s.ll);
+  svg.append("path").attr("class","rm-plan").attr("d",path(line(all)));
+  // traveled part: stops already reached, plus the latest check-in
+  let done=now.ci>=0 ? all.slice(0,now.ci+1) : [];
+  if(now.live && now.pos) done=done.concat([now.pos]);
+  if(done.length>1){
+    const p=svg.append("path").attr("class","rm-done").attr("d",path(line(done)));
+    if(animate && !reduceMotion()){ const n=p.node(); const len=n.getTotalLength(); p.attr("stroke-dasharray",len).attr("stroke-dashoffset",len).transition().duration(1600).ease(d3.easeCubicInOut).attr("stroke-dashoffset",0).on("end",()=>p.attr("stroke-dasharray",null)); }
+  }
+  const xy=stops.map(s=>proj(s.ll));
+  const g=svg.append("g");
+  stops.forEach((s,i)=>{
+    const [x,y]=xy[i]; const reached = now.ci>=i;
+    const c=g.append("circle").attr("cx",x).attr("cy",y).attr("r",animate&&!reduceMotion()?0:7).attr("class",reached?"rm-stop on":"rm-stop");
+    if(animate && !reduceMotion()) c.transition().delay(300+i*140).duration(500).ease(d3.easeBackOut.overshoot(2)).attr("r",7);
+    // keep labels apart: go left when a neighbour sits to the right
+    const crowdR = xy.some((q,j)=>j!==i && q[0]>x && q[0]-x<150 && Math.abs(q[1]-y)<34);
+    const crowdUp = xy.some((q,j)=>j<i && Math.abs(q[0]-x)<150 && Math.abs(q[1]-y)<34);
+    g.append("text").attr("x",crowdR?x-14:x+14).attr("y",crowdUp?y+30:y+7).attr("text-anchor",crowdR?"end":"start").attr("class","rm-lbl").text(s.cidade);
+  });
+  if(now.pos){
+    const [x,y]=proj(now.pos);
+    const pin=svg.append("g").attr("class","rm-now").attr("transform",`translate(${x},${y})`);
+    pin.append("circle").attr("r",10).attr("class","rm-pulse");
+    pin.append("circle").attr("r",10).attr("class","rm-pulse two");
+    pin.append("circle").attr("r",9).attr("class","rm-core");
+  }
+}
+
+/* ---------- quanto custou de verdade (resumo público opcional) ---------- */
+const r2 = n => Math.round((n||0)*100)/100;
+function resumoCustos(){
+  const cats=CATS.map(c=>{ const its=S.custos.filter(x=>(x.categoria||"Outros")===c);
+    return {c, p:r2(its.reduce((s,x)=>s+(num(x.prevEUR)||0),0)), g:r2(its.reduce((s,x)=>s+(num(x.realEUR)||0),0))}; }).filter(x=>x.p||x.g);
+  return {cambio:num(S.priv.cambio)||6.3, cats};
+}
+let resumoT=null;
+function syncResumo(){
+  if(!canWrite() || !S.loaded || !S.site.custosPublico) return;
+  const r=resumoCustos(); const cur=S.site.resumoCustos||{};
+  if(JSON.stringify({cambio:cur.cambio, cats:cur.cats})===JSON.stringify(r)) return;
+  clearTimeout(resumoT);
+  resumoT=setTimeout(()=>{ write("config","site",Object.assign({},S.site,{resumoCustos:Object.assign(r,{em:todayISO()})})); },1500);
+}
+async function setCustosPublico(on){
+  const site=Object.assign({},S.site,{custosPublico:!!on});
+  if(on) site.resumoCustos=Object.assign(resumoCustos(),{em:todayISO()}); else delete site.resumoCustos;
+  if(await write("config","site",site)) toast(on?"Resumo vai para o site público na próxima atualização (20h)":"Resumo retirado do site público");
+}
+function custoRealHtml(){
+  const r=S.site.resumoCustos; if(!S.site.custosPublico || !r || !(r.cats||[]).length) return "";
+  const cb=num(r.cambio)||6.3;
+  const tp=r.cats.reduce((s,x)=>s+(+x.p||0),0), tg=r.cats.reduce((s,x)=>s+(+x.g||0),0);
+  const max=Math.max(1,...r.cats.map(x=>Math.max(+x.p||0,+x.g||0)));
+  const diff=tp?Math.round((tg-tp)/tp*100):0;
+  return `<section class="band custo-real"><div class="wrap">
+    <div class="head-row"><div><p class="eyebrow">Transparência</p><h2 class="h2">Quanto custou de verdade.</h2><p class="small muted" style="margin:6px 0 0">O que planejamos e o que gastamos até agora, para o casal. Câmbio usado: €1 = ${brl(cb)}.${r.em?` Atualizado em ${esc(fmtDay(r.em).short)}.`:""}</p></div></div>
+    <div class="sumrow">
+      <div class="tile"><span class="tiny">Planejado</span><b>${eur(tp)}</b><span class="sub">${brl(tp*cb)}</span></div>
+      <div class="tile"><span class="tiny">Gasto até agora</span><b>${eur(tg)}</b><span class="sub">${brl(tg*cb)}</span></div>
+      <div class="tile"><span class="tiny">${tg>tp?"Acima do plano":"Ainda dentro do plano"}</span><b>${tg&&tp?(diff>0?"+":"")+diff+"%":"—"}</b><span class="sub">${tg?`${eur(Math.abs(tg-tp))} ${tg>tp?"a mais":"a menos"}`:"Os gastos reais entram durante a viagem"}</span></div>
+    </div>
+    <div class="cr-bars">${r.cats.map(x=>`<div class="cr-row"><span class="cr-cat">${esc(x.c)}</span>
+      <div class="cr-tracks"><div class="cr-track"><i class="p" style="--w:${((+x.p||0)/max*100).toFixed(1)}%"></i></div><div class="cr-track"><i class="g ${(+x.g||0)>(+x.p||0)&&x.p?"over":""}" style="--w:${((+x.g||0)/max*100).toFixed(1)}%"></i></div></div>
+      <span class="cr-v"><span>${eur(x.p)}</span><span>${x.g?eur(x.g):"—"}</span></span></div>`).join("")}</div>
+    <p class="cr-legend tiny"><span><i class="p"></i>Planejado</span><span><i class="g"></i>Gasto real</span></p>
+  </div></section>`;
+}
+
+/* ---------- cartão-postal para stories (1080×1920) ---------- */
+function fmtCoord(lat,lng){
+  const f=(v,p,n)=>{ const a=Math.abs(v); const d=Math.floor(a); const m=Math.round((a-d)*60); return `${d}°${String(m===60?59:m).padStart(2,"0")}′${v>=0?p:n}`; };
+  return `${f(lat,"N","S")}  ${f(lng,"L","O")}`;
+}
+function loadImg(src){ return new Promise((res,rej)=>{ const im=new Image(); try{ if(!/^data:|^blob:/.test(src) && new URL(src,location.href).origin!==location.origin) im.crossOrigin="anonymous"; }catch(e){} im.onload=()=>res(im); im.onerror=rej; im.src=src; }); }
+function drawCard(cv,o,img){
+  const W=1080,H=1920, x=cv.getContext("2d");
+  const SANS='-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif';
+  const MONO='"SF Mono",ui-monospace,Menlo,Consolas,monospace';
+  x.clearRect(0,0,W,H);
+  if(img){
+    const s=Math.max(W/img.width,H/img.height), w=img.width*s, h=img.height*s;
+    x.drawImage(img,(W-w)/2,(H-h)/2,w,h);
+    let gr=x.createLinearGradient(0,0,0,520); gr.addColorStop(0,"rgba(0,0,0,.55)"); gr.addColorStop(1,"rgba(0,0,0,0)"); x.fillStyle=gr; x.fillRect(0,0,W,520);
+    gr=x.createLinearGradient(0,880,0,H); gr.addColorStop(0,"rgba(0,0,0,0)"); gr.addColorStop(.45,"rgba(0,0,0,.55)"); gr.addColorStop(1,"rgba(0,0,0,.88)"); x.fillStyle=gr; x.fillRect(0,880,W,H-880);
+  }else{
+    const gr=x.createLinearGradient(0,0,W,H); gr.addColorStop(0,"#0a2a55"); gr.addColorStop(.55,"#0d3b4f"); gr.addColorStop(1,"#0f5a36"); x.fillStyle=gr; x.fillRect(0,0,W,H);
+    // latitude lines, gently curved like a globe
+    x.strokeStyle="rgba(255,255,255,.07)"; x.lineWidth=2;
+    for(let i=0;i<16;i++){ const y=120+i*115; x.beginPath(); x.moveTo(-40,y); x.quadraticCurveTo(W/2,y-60,W+40,y); x.stroke(); }
+    for(let i=0;i<9;i++){ const xx=60+i*120; x.beginPath(); x.moveTo(xx,0); x.quadraticCurveTo(xx+(i-4)*40,H/2,xx,H); x.stroke(); }
+    x.fillStyle="rgba(255,255,255,.06)"; x.font=`800 520px ${SANS}`; x.textAlign="center"; x.fillText("53°",W/2,900); x.textAlign="left";
+  }
+  x.fillStyle="#fff"; x.textBaseline="alphabetic";
+  const spaced=(t,px,py,ls)=>{ if("letterSpacing" in x){ x.letterSpacing=ls+"px"; x.fillText(t,px,py); x.letterSpacing="0px"; } else x.fillText(t.split("").join(String.fromCharCode(8202)),px,py); };
+  x.shadowColor="rgba(0,0,0,.35)"; x.shadowBlur=18;
+  x.font=`700 34px ${SANS}`; spaced("LATITUDE 53",80,140,8);
+  x.font=`500 30px ${SANS}`; x.globalAlpha=.85; x.fillText(o.autor||S.site.eyebrow||"Gustavo e Priscila",80,186); x.globalAlpha=1;
+  // passport stamp
+  x.save(); x.translate(W-210,250); x.rotate(-0.24); x.shadowBlur=0;
+  x.strokeStyle="rgba(255,255,255,.9)"; x.fillStyle="rgba(255,255,255,.9)";
+  x.lineWidth=6; x.beginPath(); x.arc(0,0,128,0,Math.PI*2); x.stroke();
+  x.lineWidth=2.5; x.beginPath(); x.arc(0,0,110,0,Math.PI*2); x.stroke();
+  x.textAlign="center"; x.font=`700 24px ${SANS}`; x.fillText(o.stampTop||"LATITUDE 53",0,-52);
+  x.font=`800 92px ${SANS}`; x.fillText((o.paisA2||"✈").toUpperCase(),0,30);
+  x.font=`700 26px ${MONO}`; x.fillText(o.data?(()=>{ const [yy,mm,dd]=o.data.split("-"); return `${dd} ${["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"][+mm-1]} ${yy.slice(2)}`; })():"2026",0,78);
+  x.restore(); x.textAlign="left";
+  x.shadowBlur=24;
+  // text block
+  let y=1190;
+  if(o.paisA2){ x.font=`600 40px ${SANS}`; spaced(`${flag(o.paisA2)}  ${countryName(o.paisA2).toUpperCase()}`,80,y,5); }
+  y+=170;
+  let size=180; const city=o.cidade||o.titulo||"Latitude 53";
+  do{ x.font=`800 ${size}px ${SANS}`; size-=6; }while(x.measureText(city).width>920 && size>70);
+  x.fillText(city,74,y);
+  y+=78;
+  const sub=String(o.titulo&&o.titulo!==city?o.titulo:"").trim();
+  if(sub){ x.font=`500 50px ${SANS}`; const words=sub.split(/\s+/); let line="", lines=[];
+    words.forEach(w=>{ const t=line?line+" "+w:w; if(x.measureText(t).width>920 && line){ lines.push(line); line=w; } else line=t; }); if(line) lines.push(line);
+    if(lines.length>2){ lines=lines.slice(0,2); lines[1]=lines[1].replace(/\s*\S*$/,"")+"…"; }
+    lines.forEach(l=>{ x.fillText(l,80,y); y+=64; }); }
+  y=Math.max(y+30,1560);
+  x.font=`600 38px ${MONO}`; x.globalAlpha=.92;
+  if(o.lat!=null && o.lng!=null && isFinite(o.lat) && isFinite(o.lng)){ x.fillText(fmtCoord(+o.lat,+o.lng),80,y); y+=56; }
+  if(o.data){ x.font=`500 34px ${SANS}`; x.fillText(new Date(o.data+"T12:00:00").toLocaleDateString("pt-BR",{day:"numeric",month:"long",year:"numeric"}),80,y); }
+  x.globalAlpha=1;
+  // route strip
+  const stops=routeStops().slice(-6);
+  const onRoute=stops.some(s=>nrm(s.cidade)===nrm(o.cidade));
+  if(stops.length>1 && onRoute){
+    const y0=1750, x0=100, x1=W-100, step=(x1-x0)/(stops.length-1); const here=stops.findIndex(s=>nrm(s.cidade)===nrm(o.cidade));
+    x.shadowBlur=0; x.strokeStyle="rgba(255,255,255,.55)"; x.lineWidth=4; x.setLineDash([2,14]); x.lineCap="round";
+    x.beginPath(); x.moveTo(x0,y0); x.lineTo(x1,y0); x.stroke(); x.setLineDash([]);
+    if(here>0){ x.strokeStyle="#fff"; x.lineWidth=5; x.beginPath(); x.moveTo(x0,y0); x.lineTo(x0+step*here,y0); x.stroke(); }
+    x.font=`600 24px ${SANS}`; x.textAlign="center";
+    stops.forEach((s,i)=>{ const cx=x0+step*i; const on=i===here;
+      x.fillStyle=on?"#34c759":(here>=0&&i<here?"#fff":"rgba(255,255,255,.6)");
+      x.beginPath(); x.arc(cx,y0,on?16:9,0,Math.PI*2); x.fill();
+      if(on){ x.strokeStyle="#fff"; x.lineWidth=4; x.stroke(); }
+      x.fillStyle=on?"#fff":"rgba(255,255,255,.75)"; const nm=s.cidade.length>12?s.cidade.slice(0,11)+"…":s.cidade; x.fillText(nm,cx,y0+52); });
+    x.textAlign="left";
+  }
+  x.fillStyle="rgba(255,255,255,.8)"; x.font=`500 26px ${SANS}`; x.shadowBlur=10;
+  const host=/github\.io$/.test(location.hostname)?location.hostname+location.pathname.replace(/\/[^/]*$/,""):"";
+  if(host){ x.textAlign="center"; x.fillText(host,W/2,1872); x.textAlign="left"; }
+  x.shadowBlur=0;
+}
+function cardBlob(cv){ return new Promise((res,rej)=>{ try{ cv.toBlob(b=>b?res(b):rej(new Error("blob")),"image/jpeg",.9); }catch(e){ rej(e); } }); }
+async function makePostcard(o){
+  const cv=document.createElement("canvas"); cv.width=1080; cv.height=1920;
+  let img=null; if(o.foto){ try{ img=await loadImg(o.foto); }catch(e){ img=null; } }
+  try{ if(document.fonts && document.fonts.ready) await document.fonts.ready; }catch(e){}
+  drawCard(cv,o,img);
+  try{ return await cardBlob(cv); }
+  catch(e){ drawCard(cv,o,null); return await cardBlob(cv); }   // photo from another site blocks export: fall back to the drawn background
+}
+async function openPostcard(o){
+  const busy=document.createElement("div"); busy.className="toast"; busy.textContent="Gerando o cartão…"; document.querySelectorAll(".toast").forEach(t=>t.remove()); document.body.appendChild(busy);
+  let blob; try{ blob=await makePostcard(o); }catch(e){ busy.remove(); toast("Não deu para gerar o cartão."); return; }
+  busy.remove();
+  const url=URL.createObjectURL(blob);
+  const slug=nrm(o.cidade||o.titulo||"latitude-53").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"")||"cartao";
+  const fname=`latitude53-${slug}.jpg`;
+  let file=null; try{ file=new File([blob],fname,{type:"image/jpeg"}); }catch(e){}
+  const canShare = !!(file && navigator.canShare && (()=>{ try{ return navigator.canShare({files:[file]}); }catch(e){ return false; } })());
+  const dlg=document.createElement("dialog"); dlg.className="sheet pc-sheet";
+  dlg.innerHTML=`<form method="dialog"><header><h2 class="h3">Cartão para stories</h2><button type="button" class="icon-btn" data-x aria-label="Fechar">✕</button></header>
+    <div class="body"><img class="pc-img" src="${url}" alt="Cartão-postal de ${esc(o.cidade||"")}"><p class="tiny muted pc-hint">${canShare?"Compartilhe direto no Instagram ou salve nas suas fotos.":"No celular, toque e segure a imagem para salvar nas fotos."}</p></div>
+    <footer><span class="sp"></span>${canShare?`<button type="button" class="btn secondary" data-save>Salvar</button><button type="button" class="btn" data-share>Compartilhar</button>`:`<button type="button" class="btn" data-save>Salvar imagem</button>`}</footer></form>`;
+  document.body.appendChild(dlg);
+  const close=()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); setTimeout(()=>URL.revokeObjectURL(url),1000); };
+  dlg.querySelectorAll("[data-x]").forEach(b=>b.onclick=close);
+  dlg.addEventListener("cancel",e=>{ e.preventDefault(); close(); });
+  const sh=dlg.querySelector("[data-share]"); if(sh) sh.onclick=async()=>{ try{ await navigator.share({files:[file], title:o.cidade||"Latitude 53"}); }catch(e){} };
+  dlg.querySelector("[data-save]").onclick=async()=>{
+    if(S.downloads){ try{ const r=await S.downloads.save({filename:fname,data:blob}); if(r&&r.status==="saved") toast("Imagem salva"); }catch(e){ if(!e||e.code!=="declined") toast("Não deu para salvar aqui. Toque e segure a imagem."); } return; }
+    const a=document.createElement("a"); a.href=url; a.download=fname; document.body.appendChild(a); a.click(); a.remove();
+  };
+  if(typeof dlg.showModal==="function"){ try{ dlg.showModal(); }catch(e){ dlg.setAttribute("open",""); } } else dlg.setAttribute("open","");
+}
+function placeOfCity(cidade,pais){ const k=nrm(cidade); return S.lugares.find(l=>nrm(l.cidade)===k && (!pais||l.paisA2===pais)); }
+function postcardFor(ref){
+  const [kind,id]=String(ref).split(":");
+  if(kind==="lugar"){ const l=S.lugares.find(x=>x.id===id); if(!l) return;
+    const foto=(l.fotos||[]).map((fid,i)=>imgSrc(fid,(l.fotosData||[])[i])).filter(Boolean)[0]||"";
+    const iso=/^\d{4}-\d{2}-\d{2}$/.test(l.quando||"")?l.quando:"";
+    return openPostcard({cidade:l.cidade, paisA2:l.paisA2, lat:l.lat, lng:l.lng, foto, titulo:l.estado&&l.paisA2==="BR"?l.estado:"", data:iso}); }
+  if(kind==="dia"){ const d=S.dias.find(x=>x.id===id); if(!d) return;
+    const l=placeOfCity(d.cidade,d.paisA2); const ll=coordOf(d.cidade,d.paisA2);
+    const foto=l?(l.fotos||[]).map((fid,i)=>imgSrc(fid,(l.fotosData||[])[i])).filter(Boolean)[0]||"":"";
+    const n=sortedDays().filter(x=>x.paisA2!=="BR"); const i=n.findIndex(x=>x.id===d.id);
+    return openPostcard({cidade:d.cidade, paisA2:d.paisA2, lat:ll&&ll[1], lng:ll&&ll[0], foto, titulo:d.titulo, data:d.data, stampTop:i>=0?`DIA ${i+1} DE ${n.length}`:"LATITUDE 53"}); }
+}
+const pcBtn = ref => `<button type="button" class="link-btn small pc-btn" data-postcard="${esc(ref)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg>Cartão para stories</button>`;
+
 window.LAT53 = {
   S, render, toast, sheet, esc, safeUrl, flag, countryName, countryOptions, fmtDay, nrm: t=>nrm(t), reduceMotion,
+  postcard: openPostcard, loadMapLib, loadCities, nearestCity: (a,b)=>nearestCity(a,b), canonCity: (a,b)=>canonCity(a,b), stateName, routeStops, relTime,
+  setLive(list){ const k=JSON.stringify(list||[]); if(k===S._liveKey) return; S._liveKey=k; S.live=list||[]; if(S.view==="inicio" && S.loaded) render(); },
   addView(key,label,fn,opts){ opts=opts||{}; EXT.views[key]=fn; if(!opts.hidden && !VIEWS.some(v=>v[0]===key)){ if(opts.after){ const i=VIEWS.findIndex(v=>v[0]===opts.after); VIEWS.splice(i<0?VIEWS.length:i+1,0,[key,label]); } else VIEWS.push([key,label]); } },
   onAfterRender(f){ EXT.after.push(f); },
   addNav(f){ EXT.navExtra.push(f); },

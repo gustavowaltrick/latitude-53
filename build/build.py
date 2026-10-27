@@ -5,6 +5,8 @@ Uso:  python3 build/build.py <pasta_exportada> [<pasta_com_fotos>]
 A pasta exportada tem as subpastas dias/, itens/, lugares/, guia/ e config/site.json,
 no formato salvo pelo ArtifactData (out_dir). A pasta de fotos tem <asset_id>.jpg/png/webp.
 Só entram roteiro, mapa e guia: custos, reservas, checklists e gravações nunca são lidos.
+O único dado de custo é o resumo por categoria que o próprio site privado grava em config/site
+(resumoCustos), e ele só sai quando custosPublico está ligado.
 Sai com código 0 e imprime CHANGED ou UNCHANGED.
 """
 import json, glob, os, sys, shutil, hashlib, datetime
@@ -29,6 +31,16 @@ if capa and fotos_src:
         p = os.path.join(fotos_src, f"{capa}.{ext}")
         if os.path.exists(p): shutil.copy(p, os.path.join(ROOT, "capa.jpg" if ext == "jpg" else f"capa.{ext}")); site["capaData"] = "capa.jpg" if ext == "jpg" else f"capa.{ext}"; break
 site.setdefault("capaData", "capa.jpg")
+# "Quanto custou de verdade": só sai o resumo por categoria, e só se os donos ligaram no site privado
+if site.get("custosPublico") and isinstance(site.get("resumoCustos"), dict):
+    r = site["resumoCustos"]
+    def n(v):
+        try: return round(float(v), 2)
+        except Exception: return 0
+    site["resumoCustos"] = {"cambio": n(r.get("cambio")) or 6.3, "em": str(r.get("em") or "")[:10],
+        "cats": [{"c": str(c.get("c", ""))[:40], "p": n(c.get("p")), "g": n(c.get("g"))} for c in (r.get("cats") or []) if isinstance(c, dict)][:12]}
+else:
+    site.pop("resumoCustos", None); site.pop("custosPublico", None)
 
 lugares, seen = [], set()
 os.makedirs(os.path.join(ROOT, "fotos"), exist_ok=True)

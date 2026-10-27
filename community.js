@@ -14,7 +14,7 @@ const C = {
   ready:false, user:null, verified:false, me:null, admins:new Set(),
   comments:[], byTarget:{}, profiles:{}, following:new Set(), saved:{},
   open:new Set(), perfilUid:null, filtro:"todos", members:null, unsub:[], authKnown:false,
-  posts:[], fotos:{}, fotoLoading:new Set()
+  posts:[], fotos:{}, fotoLoading:new Set(), tipoF:"tudo"
 };
 { const cu=cachedUser(); if(cu && cu.uid) C.profiles[cu.uid]={id:cu.uid, nome:cu.nome||"", foto:cu.foto||"", avatar:cu.avatar||""}; }
 let fb=null, auth=null, db=null;
@@ -51,13 +51,15 @@ function start(){
   // conexão por "long polling": mais estável em redes móveis e no Safari do iPhone
   try{ db.settings({experimentalForceLongPolling:true, merge:true}); }catch(e){}
   C.ready = true;
-  db.collection("admins").get().then(q=>{ C.admins=new Set(q.docs.map(d=>d.id)); refresh(); }).catch(()=>{});
+  db.collection("admins").get().then(q=>{ C.admins=new Set(q.docs.map(d=>d.id)); pushLive(); refresh(); }).catch(()=>{});
+  // check-ins (sem orderBy: dispensa índice composto); os dos autores desenham a rota ao vivo
+  db.collection("posts").where("tipo","==","checkin").limit(150).onSnapshot(q=>{ liveDocs=q.docs.map(d=>Object.assign({id:d.id},d.data())); pushLive(); },()=>{});
   db.collection("comments").orderBy("em","desc").limit(300).onSnapshot(q=>{
     C.comments = q.docs.map(d=>Object.assign({id:d.id},d.data()));
     C.byTarget = {}; C.comments.forEach(c=>{ (C.byTarget[c.alvo]=C.byTarget[c.alvo]||[]).push(c); });
     want(C.comments.map(c=>c.uid)); refresh();
   },()=>{});
-  db.collection("posts").orderBy("em","desc").limit(60).onSnapshot(q=>{
+  db.collection("posts").orderBy("em","desc").limit(100).onSnapshot(q=>{
     C.posts = q.docs.map(d=>Object.assign({id:d.id},d.data()));
     want(C.posts.map(x=>x.uid)); refresh();
   },()=>{});
@@ -313,17 +315,25 @@ function vComunidade(){
   if(!C.ready) return `<section class="band"><div class="wrap"><p class="eyebrow">Comunidade</p><h1 class="h1">Carregando…</h1></div></section>`;
   loadMembers();
   const feed = (C.filtro==="seguindo" && C.user) ? C.comments.filter(c=>C.following.has(c.uid)) : C.comments;
-  const posts = (C.filtro==="seguindo" && C.user) ? C.posts.filter(x=>C.following.has(x.uid)||x.uid===C.user.uid) : C.posts;
+  let posts = (C.filtro==="seguindo" && C.user) ? C.posts.filter(x=>C.following.has(x.uid)||x.uid===C.user.uid) : C.posts;
+  if(C.tipoF!=="tudo") posts = posts.filter(x=>tipoOf(x)===C.tipoF);
   const members = (C.members||[]).slice().sort((a,b)=>(C.admins.has(b.id)-C.admins.has(a.id)));
   setTimeout(bindCommunity,0);
   return `<section class="band"><div class="wrap">
     <div class="head-row"><div><p class="eyebrow">Comunidade</p><h1 class="h1">Quem vem junto.</h1><p class="lead">Gente que acompanha a mudança, comenta os lugares e troca dicas de viagem.</p></div>
     ${C.user?`<div class="actions"><button class="btn secondary" type="button" data-go-me>Meu perfil</button></div>`:`<div class="actions"><button class="btn" type="button" data-login>Criar conta ou entrar</button></div>`}</div>
 
-    <div class="head-row" style="margin:0 0 14px"><h2 class="h3">Dicas da comunidade</h2>
+    <div class="new-post-bar">
+      <button type="button" class="np-main" data-new-post="post">${C.user?avatar(C.user.uid,36):`<span class="av" style="--s:36px">+</span>`}<span>${C.user?"Compartilhe uma foto, uma dica ou onde você está…":"Entre para publicar na comunidade"}</span></button>
+      <div class="np-quick"><button type="button" class="btn plain" data-new-post="dica">★ Dica</button><button type="button" class="btn plain" data-new-post="checkin">📍 Check-in</button><button type="button" class="btn plain" data-new-post="post">📷 Foto</button></div>
+    </div>
+    <div class="head-row" style="margin:0 0 14px"><h2 class="h3">Publicações</h2>
       <div class="actions">${C.user?`<div class="segbar" role="group" aria-label="Filtrar" style="margin:0"><button type="button" data-filtro="todos" aria-pressed="${C.filtro!=="seguindo"}">Todos</button><button type="button" data-filtro="seguindo" aria-pressed="${C.filtro==="seguindo"}">Quem eu sigo</button></div>`:""}
-      <button class="btn" type="button" data-new-post>Nova dica</button></div></div>
-    ${posts.length?`<div class="posts">${posts.map(postCard).join("")}</div>`:`<div class="empty-state"><p class="h3">${C.filtro==="seguindo"?"Quem você segue ainda não postou":"Nenhuma dica ainda"}</p><p class="small">Compartilhe um lugar que você ama ou quer conhecer. Quem gostar adiciona à lista de desejos.</p></div>`}
+      <button class="btn" type="button" data-new-post="post">Publicar</button></div></div>
+    <div class="chips tipo-f" role="group" aria-label="Tipo de publicação">${[["tudo","Tudo"],["post","Publicações"],["dica","Dicas"],["checkin","Check-ins"]].map(([k,l])=>`<button type="button" class="chip" data-tipo-f="${k}" aria-pressed="${C.tipoF===k}">${l}</button>`).join("")}</div>
+    ${posts.length?`<div class="posts">${posts.map(postCard).join("")}</div>`:`<div class="empty-state"><p class="h3">${C.filtro==="seguindo"?"Quem você segue ainda não postou":"Nada por aqui ainda"}</p><p class="small">Publique uma foto, uma dica de lugar ou um check-in. Quem gostar de uma dica adiciona à lista de desejos.</p></div>`}
+
+    <div style="margin-top:48px">${communityMapHtml()}</div>
 
     <h2 class="h3" style="margin:48px 0 14px">Membros</h2>
     ${C.members===null?`<p class="muted small">Carregando membros…</p>`:members.length?`<div class="members">${members.map(m=>`<div class="member">
@@ -341,17 +351,19 @@ function vComunidade(){
 }
 function postCard(x){
   const mine = C.user && (C.user.uid===x.uid || C.admins.has(C.user.uid));
+  const tp = tipoOf(x);
   const place=[x.cidade, x.paisA2?L.countryName(x.paisA2):""].filter(Boolean).join(", ");
   const link=L.safeUrl(x.link);
-  return `<article class="post" data-post="${esc(x.id)}" data-title="${esc(x.titulo||"")}">
+  return `<article class="post t-${tp}" data-post="${esc(x.id)}" data-title="${esc(x.titulo||(tp==="checkin"?"Check-in em "+(x.cidade||""):"Publicação de "+nameOf(x.uid,x.nome)))}">
     <header class="post-h"><button type="button" class="c-av" data-profile="${esc(x.uid)}" aria-label="Perfil">${avatar(x.uid,40)}</button>
-      <div class="c-body"><div class="c-meta"><button type="button" class="link-btn c-name" data-profile="${esc(x.uid)}">${esc(nameOf(x.uid,x.nome))}</button>${badge(x.uid)}<span class="tiny">${esc(when(x.em))}</span>
+      <div class="c-body"><div class="c-meta"><button type="button" class="link-btn c-name" data-profile="${esc(x.uid)}">${esc(nameOf(x.uid,x.nome))}</button>${badge(x.uid)}<span class="tiny">${tp==="checkin"?`fez check-in · `:""}${esc(when(x.em))}</span><span class="tipo-tag tt-${tp}">${esc(TIPOS_POST[tp])}</span>
       ${mine?`<button type="button" class="link-btn tiny c-del" data-del-post="${esc(x.id)}">Apagar</button>`:""}</div>
-      ${place?`<span class="place-chip">${x.paisA2?`<span class="flag">${L.flag(x.paisA2)}</span>`:""}${esc(place)}</span>`:""}</div></header>
+      ${place&&tp!=="checkin"?`<span class="place-chip">${x.paisA2?`<span class="flag">${L.flag(x.paisA2)}</span>`:""}${esc(place)}</span>`:""}</div></header>
     ${x.temFoto?`<div class="post-img" data-foto="${esc(x.id)}">${C.fotos[x.id]?`<img src="${esc(C.fotos[x.id])}" alt="${esc(x.titulo||"")}" decoding="async">`:""}</div>`:""}
-    <h3 class="h3 post-t">${esc(x.titulo||"")}</h3>
+    ${tp==="checkin"&&x.cidade?`<p class="ck-line"><span class="ck-pin" aria-hidden="true"></span>${x.paisA2?`<span class="flag">${L.flag(x.paisA2)}</span> `:""}${esc(x.cidade)}</p>`:""}
+    ${x.titulo?`<h3 class="h3 post-t">${esc(x.titulo)}</h3>`:""}
     ${x.texto?`<p class="c-text">${esc(x.texto)}</p>`:""}
-    ${link?`<a class="small" href="${esc(link)}" target="_blank" rel="noopener">Ver link ↗</a>`:""}
+    <div class="post-foot">${link?`<a class="small" href="${esc(link)}" target="_blank" rel="noopener">Ver link ↗</a>`:""}${(x.temFoto||x.cidade)?`<button type="button" class="link-btn small pc-btn" data-pc-post="${esc(x.id)}">Cartão para stories</button>`:""}</div>
   </article>`;
 }
 function loadPostPhotos(){
@@ -367,22 +379,27 @@ function loadPostPhotos(){
     }).catch(()=>{ C.fotoLoading.delete(id); });
   });
 }
-function postSheet(){
-  if(!C.user) return needLogin("Entre para publicar uma dica.");
+const TIPOS_POST = {post:"Publicação", dica:"Dica", checkin:"Check-in"};
+const tipoOf = x => TIPOS_POST[x.tipo] ? x.tipo : "dica";   // older posts were all tips
+function postSheet(tipo0){
+  if(!C.user) return needLogin("Entre para publicar.");
   if(!C.verified) { toast("Confirme seu e-mail para publicar."); C.perfilUid=C.user.uid; L.go("perfil"); return; }
-  let foto="";
+  let foto="", tipo=TIPOS_POST[tipo0]?tipo0:"post", geo=null;
   const dlg=document.createElement("dialog"); dlg.className="sheet post-sheet";
-  dlg.innerHTML=`<form method="dialog" novalidate><header><h2 class="h3">Nova dica</h2><button type="button" class="icon-btn" data-x aria-label="Fechar">✕</button></header>
+  dlg.innerHTML=`<form method="dialog" novalidate><header><h2 class="h3">Nova publicação</h2><button type="button" class="icon-btn" data-x aria-label="Fechar">✕</button></header>
     <div class="body">
+      <div class="segbar tipo-bar" role="group" aria-label="Tipo">${Object.entries(TIPOS_POST).map(([k,l])=>`<button type="button" data-tipo="${k}" aria-pressed="${k===tipo}">${l}</button>`).join("")}</div>
+      <p class="tiny muted" id="n-help"></p>
+      <div class="geo-box" id="n-geo" hidden><button type="button" class="btn secondary" id="n-loc">Usar minha localização</button><span class="tiny" id="n-geo-t">Mostramos só a cidade, nunca o endereço.</span></div>
       <div class="post-photo" id="n-prev"><label for="n-file" class="post-photo-empty">Adicionar foto (opcional)</label></div>
       <input type="file" id="n-file" accept="image/*" class="sr">
-      <div class="field"><label for="n-titulo">Título</label><input type="text" id="n-titulo" maxlength="100" placeholder="Ex.: Pôr do sol no Miradouro da Graça"></div>
+      <div class="field" id="n-titulo-f"><label for="n-titulo" id="n-titulo-l">Título</label><input type="text" id="n-titulo" maxlength="100"></div>
       <div class="row2">
         <div class="field"><label for="n-cidade">Cidade ou lugar</label><input type="text" id="n-cidade" maxlength="60" placeholder="Lisboa"></div>
         <div class="field"><label for="n-pais">País</label><select id="n-pais">${L.countryOptions().map(([a,n])=>`<option value="${esc(a)}">${esc(n)}</option>`).join("")}</select></div>
       </div>
-      <div class="field"><label for="n-texto">Conte a dica</label><textarea id="n-texto" maxlength="1500" rows="4" placeholder="Por que vale a pena, quanto custa, melhor horário…"></textarea></div>
-      <div class="field"><label for="n-link">Link (opcional)</label><input type="url" id="n-link" maxlength="300" placeholder="https://"></div>
+      <div class="field"><label for="n-texto" id="n-texto-l">Texto</label><textarea id="n-texto" maxlength="1500" rows="4"></textarea></div>
+      <div class="field" id="n-link-f"><label for="n-link">Link (opcional)</label><input type="url" id="n-link" maxlength="300" placeholder="https://"></div>
       <p class="small p-err" id="n-err" hidden></p>
     </div>
     <footer><span class="sp"></span><button type="button" class="btn plain" data-x>Cancelar</button><button type="submit" class="btn" id="n-save">Publicar</button></footer></form>`;
@@ -391,6 +408,33 @@ function postSheet(){
   const close=()=>{ try{ dlg.close(); }catch(e){} dlg.remove(); };
   dlg.querySelectorAll("[data-x]").forEach(b=>b.onclick=close);
   dlg.addEventListener("cancel",e=>{ e.preventDefault(); close(); });
+  const drawTipo=()=>{
+    dlg.querySelectorAll("[data-tipo]").forEach(b=>b.setAttribute("aria-pressed",b.dataset.tipo===tipo));
+    $d("#n-help").textContent = tipo==="dica" ? "Um lugar, um restaurante, um passeio: algo que vale a pena para quem viaja."
+      : tipo==="checkin" ? "Conte onde você está agora. Aparece no seu perfil e no mural da comunidade."
+      : "Uma foto, um momento, uma pergunta para a comunidade.";
+    $d("#n-geo").hidden = tipo!=="checkin";
+    $d("#n-link-f").hidden = tipo==="checkin";
+    $d("#n-titulo-l").textContent = tipo==="dica" ? "Título" : "Título (opcional)";
+    $d("#n-titulo").placeholder = tipo==="dica" ? "Ex.: Pôr do sol no Miradouro da Graça" : tipo==="checkin" ? "Ex.: Primeiro dia de neve!" : "Ex.: Mala pronta";
+    $d("#n-texto-l").textContent = tipo==="dica" ? "Conte a dica" : tipo==="checkin" ? "Como está sendo? (opcional)" : "O que você quer contar";
+    $d("#n-texto").placeholder = tipo==="dica" ? "Por que vale a pena, quanto custa, melhor horário…" : "Escreva aqui…";
+  };
+  drawTipo();
+  dlg.querySelector(".tipo-bar").addEventListener("click",e=>{ const b=e.target.closest("[data-tipo]"); if(!b) return; tipo=b.dataset.tipo; drawTipo(); });
+  $d("#n-cidade").addEventListener("input",()=>{ geo=null; });
+  $d("#n-loc").onclick=()=>{
+    const t=$d("#n-geo-t");
+    if(!navigator.geolocation){ t.textContent="Este aparelho não informa a localização. Escreva a cidade."; return; }
+    t.textContent="Procurando…";
+    navigator.geolocation.getCurrentPosition(async p=>{
+      const lat=p.coords.latitude, lng=p.coords.longitude;
+      await L.loadCities();
+      const c=L.nearestCity(lat,lng);
+      if(c){ $d("#n-cidade").value=c.n; $d("#n-pais").value=c.c; geo={lat:+c.lat.toFixed(3), lng:+c.lng.toFixed(3)}; t.textContent=`${c.n}${L.stateName(c.c,c.s)?", "+L.stateName(c.c,c.s):""}. Só a cidade aparece.`; }
+      else { geo={lat:+lat.toFixed(1), lng:+lng.toFixed(1)}; t.textContent="Não achei a cidade. Escreva o nome dela; a posição fica aproximada."; }
+    },()=>{ t.textContent="Sem permissão de localização. Escreva a cidade."; },{enableHighAccuracy:false,timeout:12000,maximumAge:600000});
+  };
   const drawPrev=()=>{ $d("#n-prev").innerHTML = foto ? `<img src="${esc(foto)}" alt="Prévia"><button type="button" class="post-photo-rm" aria-label="Remover foto">×</button>` : `<label for="n-file" class="post-photo-empty">Adicionar foto (opcional)</label>`;
     const rm=$d(".post-photo-rm"); if(rm) rm.onclick=()=>{ foto=""; drawPrev(); }; };
   $d("#n-file").addEventListener("change",async ()=>{ const f=$d("#n-file").files[0]; if(!f) return;
@@ -398,23 +442,118 @@ function postSheet(){
     try{ foto=await shrinkImage(f, 1080, .72, false, 380000); }catch(e){ foto=""; toast("Não deu para usar essa foto. Tente outra."); }
     drawPrev(); $d("#n-file").value=""; });
   $d("form").onsubmit=async e=>{
-    e.preventDefault(); const err=$d("#n-err");
-    const titulo=$d("#n-titulo").value.trim(); if(!titulo){ err.textContent="Dê um título para a dica."; err.hidden=false; return; }
-    const link=$d("#n-link").value.trim(); if(link && !L.safeUrl(link)){ err.textContent="O link precisa começar com https://"; err.hidden=false; return; }
+    e.preventDefault(); const err=$d("#n-err"); const bad=m=>{ err.textContent=m; err.hidden=false; };
+    const titulo=$d("#n-titulo").value.trim(), texto=$d("#n-texto").value.trim(), cidade=$d("#n-cidade").value.trim(), pais=$d("#n-pais").value;
+    if(tipo==="dica" && !titulo) return bad("Dê um título para a dica.");
+    if(tipo==="checkin" && !cidade) return bad("Escreva a cidade ou use sua localização.");
+    if(tipo==="post" && !titulo && !texto && !foto) return bad("Escreva algo ou adicione uma foto.");
+    const link=tipo==="checkin"?"":$d("#n-link").value.trim(); if(link && !L.safeUrl(link)) return bad("O link precisa começar com https://");
     const btn=$d("#n-save"); btn.disabled=true; btn.textContent="Publicando…"; err.hidden=true;
-    const pais=$d("#n-pais").value;
+    if(tipo==="checkin" && !geo && cidade){ try{ await L.loadCities(); const c=L.canonCity(cidade,/^[A-Z]{2}$/.test(pais)?pais:""); if(c) geo={lat:+c.lat.toFixed(3), lng:+c.lng.toFixed(3)}; }catch(x){} }
     try{
       const ref=db.collection("posts").doc();
-      await timed(ref.set({uid:C.user.uid, nome:(C.me&&C.me.nome)||"", titulo:titulo.slice(0,100), cidade:$d("#n-cidade").value.trim().slice(0,60), paisA2:/^[A-Z]{2}$/.test(pais)?pais:"", texto:$d("#n-texto").value.trim().slice(0,1500), link:link.slice(0,300), temFoto:!!foto, em:TS()}),15000);
+      const data={uid:C.user.uid, nome:(C.me&&C.me.nome)||"", tipo, titulo:titulo.slice(0,100), cidade:cidade.slice(0,60), paisA2:/^[A-Z]{2}$/.test(pais)?pais:"", texto:texto.slice(0,1500), link:link.slice(0,300), temFoto:!!foto, em:TS()};
+      if(tipo==="checkin" && geo){ data.lat=geo.lat; data.lng=geo.lng; }
+      await timed(ref.set(data),15000);
       if(foto){ try{ await timed(db.collection("fotos").doc(ref.id).set({uid:C.user.uid, data:foto}),20000); C.fotos[ref.id]=foto; }catch(x){ dbError(x,"enviar a foto"); } }
-      close(); toast("Dica publicada"); L.render();
-    }catch(x){ dbError(x,"publicar a dica"); err.textContent=C.lastError; err.hidden=false; btn.disabled=false; btn.textContent="Publicar"; }
+      close(); toast(tipo==="checkin"?"Check-in feito":tipo==="dica"?"Dica publicada":"Publicado"); L.render();
+    }catch(x){ dbError(x,"publicar"); err.textContent=C.lastError; err.hidden=false; btn.disabled=false; btn.textContent="Publicar"; }
   };
   if(typeof dlg.showModal==="function"){ try{ dlg.showModal(); }catch(e){ dlg.setAttribute("open",""); dlg.classList.add("no-modal"); } } else { dlg.setAttribute("open",""); dlg.classList.add("no-modal"); }
 }
+async function postcardPost(id){
+  const x=C.posts.find(p=>p.id===id); if(!x) return;
+  if(x.temFoto && !C.fotos[id]){ try{ const d=await db.collection("fotos").doc(id).get(); const v=d.exists&&d.data().data; if(typeof v==="string"&&v.startsWith("data:image/jpeg;base64,")) C.fotos[id]=v; }catch(e){} }
+  const dt=x.em&&x.em.toDate?x.em.toDate():new Date();
+  const iso=dt.getFullYear()+"-"+String(dt.getMonth()+1).padStart(2,"0")+"-"+String(dt.getDate()).padStart(2,"0");
+  L.postcard({cidade:x.cidade||x.titulo||"Latitude 53", paisA2:x.paisA2, lat:x.lat, lng:x.lng, foto:C.fotos[id]||"", titulo:x.cidade?(x.titulo||""):"", data:iso, autor:nameOf(x.uid,x.nome), stampTop:tipoOf(x)==="checkin"?"CHECK-IN":tipoOf(x)==="dica"?"DICA":"LATITUDE 53"});
+}
+
+/* ---------- ao vivo: check-ins dos autores alimentam a rota no Início ---------- */
+let liveDocs=[];
+function pushLive(){
+  const list=liveDocs.filter(x=>C.admins.has(x.uid) && isFinite(x.lat) && isFinite(x.lng) && x.lat!=null)
+    .map(x=>({lat:x.lat, lng:x.lng, cidade:x.cidade||"", paisA2:x.paisA2||"", t:x.em&&x.em.toMillis?x.em.toMillis():0}))
+    .sort((a,b)=>a.t-b.t);
+  L.setLive(list);
+}
+
+/* ---------- mapa da comunidade ---------- */
+function countryCounts(){
+  const m={}; (C.members||[]).forEach(p=>(p.paises||[]).forEach(a=>{ if(/^[A-Z]{2}$/.test(a)) m[a]=(m[a]||0)+1; })); return m;
+}
+function communityMapHtml(){
+  if(!C.members || !C.members.length) return "";
+  const m=countryCounts(); const keys=Object.keys(m); if(!keys.length) return "";
+  const top=keys.sort((a,b)=>m[b]-m[a]||L.countryName(a).localeCompare(L.countryName(b),"pt")).slice(0,8);
+  return `<div class="cmap-wrap">
+    <div class="head-row" style="margin:0 0 12px"><div><h2 class="h3">O mapa da comunidade</h2><p class="small muted" style="margin:4px 0 0"><b class="num">${C.members.length}</b> ${C.members.length===1?"membro já passou":"membros já passaram"} por <b class="num">${keys.length}</b> ${keys.length===1?"país":"países"}. Marque os seus no perfil.</p></div></div>
+    <div class="cmap" id="cmap" role="img" aria-label="Mapa com os países visitados pelos membros"></div>
+    <div class="chips cmap-top">${top.map(a=>`<span class="chip"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))} <b class="num">${m[a]}</b></span>`).join("")}</div>
+  </div>`;
+}
+function drawCommunityMap(){
+  const el=document.getElementById("cmap"); if(!el || el.querySelector("svg")) return;
+  if(!window.d3 || !window.WORLD){ if(!el.dataset.wait){ el.dataset.wait=1; L.loadMapLib().then(ok=>{ if(ok) drawCommunityMap(); }); } return; }
+  const d3=window.d3, m=countryCounts(), max=Math.max(1,...Object.values(m));
+  const W=960,H=470;
+  const feats=topojson.feature(WORLD, WORLD.objects.countries).features.filter(f=>f.properties.a2!=="AQ");
+  const proj=d3.geoNaturalEarth1().fitExtent([[4,4],[W-4,H-4]],{type:"FeatureCollection",features:feats}); const path=d3.geoPath(proj);
+  const svg=d3.select(el).append("svg").attr("viewBox",`0 0 ${W} ${H}`);
+  svg.append("g").selectAll("path").data(feats).join("path").attr("d",path).attr("class","rm-land")
+    .append("title").text(f=>L.countryName(f.properties.a2));
+  const hot=feats.filter(f=>m[f.properties.a2]);
+  const p=svg.append("g").selectAll("path").data(hot).join("path").attr("d",path).attr("class","cm-hot")
+    .style("fill-opacity",f=>(.28+.72*Math.sqrt(m[f.properties.a2]/max)).toFixed(2));
+  p.append("title").text(f=>`${L.countryName(f.properties.a2)} · ${m[f.properties.a2]} ${m[f.properties.a2]===1?"membro":"membros"}`);
+  if(!L.reduceMotion()) p.style("opacity",0).transition().delay((d,i)=>150+i*25).duration(600).style("opacity",1);
+}
+
+/* ---------- passaporte: carimbos por participação ---------- */
+const STAMPS = [
+  {k:"embarque", n:"Embarque", i:"✈︎", c:"#0071e3", h:"Criou a conta", ok:s=>true},
+  {k:"palavra", n:"Primeira palavra", i:"💬", c:"#5e5ce6", h:"Faça 1 comentário", ok:s=>s.comments>=1},
+  {k:"papo", n:"Bom de papo", i:"🗣", c:"#bf5af2", h:"Faça 10 comentários", ok:s=>s.comments>=10},
+  {k:"post", n:"Primeiro post", i:"✍︎", c:"#ff9f0a", h:"Publique algo", ok:s=>s.posts>=1},
+  {k:"dica", n:"Dica de ouro", i:"★", c:"#d4a017", h:"Publique 1 dica", ok:s=>s.dicas>=1},
+  {k:"guia", n:"Guia local", i:"🧭", c:"#ff6b35", h:"Publique 5 vezes", ok:s=>s.posts>=5},
+  {k:"checkin", n:"Estive aqui", i:"📍", c:"#ff375f", h:"Faça 1 check-in", ok:s=>s.checkins>=1},
+  {k:"foto", n:"Olhar de fotógrafo", i:"📷", c:"#64d2ff", h:"Publique uma foto", ok:s=>s.fotos>=1},
+  {k:"explorador", n:"Explorador", i:"🗺", c:"#30b05a", h:"Marque 5 países", ok:s=>s.paises>=5},
+  {k:"mundo", n:"Cidadão do mundo", i:"🌍", c:"#1f7a35", h:"Marque 15 países", ok:s=>s.paises>=15},
+  {k:"rota", n:"Na nossa rota", i:"⚓︎", c:"#0a84ff", h:"Visite Portugal, Holanda ou Irlanda", ok:s=>s.rota},
+  {k:"turma", n:"Turma", i:"🤝", c:"#ac8e68", h:"Siga 5 pessoas", ok:s=>s.seguindo>=5},
+  {k:"querido", n:"Querido", i:"♥︎", c:"#ff2d55", h:"Tenha 10 seguidores", ok:s=>s.seguidores>=10},
+  {k:"sonhador", n:"Sonhador", i:"☁︎", c:"#8e8e93", h:"Guarde 5 desejos", ok:s=>s.salvos>=5, self:true},
+  {k:"pioneiro", n:"Pioneiro", i:"⚑", c:"#e8590c", h:"Esteja entre os 50 primeiros", ok:s=>s.pioneiro}
+];
+function stampStats(uid, p, mine){
+  const posts=C.posts.filter(x=>x.uid===uid); const fc=(C.followCache&&C.followCache.uid===uid)?C.followCache:{};
+  let pioneiro=false;
+  if(C.members && C.members.length && p && p.criadoEm && p.criadoEm.toMillis){
+    const older=C.members.filter(m=>m.criadoEm&&m.criadoEm.toMillis&&m.criadoEm.toMillis()<p.criadoEm.toMillis()).length;
+    pioneiro = C.members.length<200 && older<50;
+  }
+  const paises=(p&&p.paises)||[];
+  return {comments:C.comments.filter(c=>c.uid===uid).length, posts:posts.length, dicas:posts.filter(x=>tipoOf(x)==="dica").length,
+    checkins:posts.filter(x=>tipoOf(x)==="checkin").length, fotos:posts.filter(x=>x.temFoto).length, paises:paises.length,
+    rota:paises.some(a=>["PT","NL","IE"].includes(a)), seguindo:fc.seguindo||0, seguidores:fc.seguidores||0,
+    salvos:mine?Object.keys(C.saved).length:0, pioneiro};
+}
+function passportHtml(uid, p, mine){
+  const s=stampStats(uid,p,mine);
+  const list=STAMPS.filter(x=>mine || !x.self);
+  const got=list.filter(x=>x.ok(s));
+  const shown = mine ? list : got;
+  if(!shown.length) return "";
+  const rot=k=>{ let h=0; for(const ch of k) h=(h*31+ch.charCodeAt(0))%997; return (h%17)-8; };
+  return `<div class="head-row hoje-h" style="margin-bottom:12px"><h2 class="h3">Passaporte</h2><span class="tiny num">${got.length} de ${list.length} carimbos</span></div>
+    <div class="stamps">${shown.map(x=>{ const ok=x.ok(s); return `<div class="stamp ${ok?"on":"off"}" style="--sc:${x.c};--rot:${ok?rot(x.k):0}deg" title="${esc(ok?x.n:x.h)}">
+      <span class="st-ring"><span class="st-i" aria-hidden="true">${x.i}</span></span><span class="st-n">${esc(x.n)}</span>${ok?"":`<span class="st-h">${esc(x.h)}</span>`}</div>`; }).join("")}</div>`;
+}
 async function delPost(id,btn){
   if(!btn.dataset.confirm){ btn.dataset.confirm=1; btn.textContent="Confirmar"; setTimeout(()=>{ if(btn.isConnected){ btn.textContent="Apagar"; delete btn.dataset.confirm; } },3000); return; }
-  try{ const x=C.posts.find(p=>p.id===id); if(x&&x.temFoto) await timed(db.collection("fotos").doc(id).delete()).catch(()=>{}); await timed(db.collection("posts").doc(id).delete()); toast("Dica apagada"); }catch(e){ dbError(e,"apagar a dica"); }
+  try{ const x=C.posts.find(p=>p.id===id); if(x&&x.temFoto) await timed(db.collection("fotos").doc(id).delete()).catch(()=>{}); await timed(db.collection("posts").doc(id).delete()); toast("Publicação apagada"); }catch(e){ dbError(e,"apagar a publicação"); }
 }
 function bindCommunity(){
   const v=document.getElementById("view"); if(!v || v.dataset.cb===L.S.view) return; v.dataset.cb=L.S.view;
@@ -425,7 +564,9 @@ function bindCommunity(){
     if(e.target.closest("[data-go-me]")){ C.perfilUid=C.user.uid; L.go("perfil"); return; }
     const fl=e.target.closest("[data-filtro]"); if(fl){ C.filtro=fl.dataset.filtro; L.render(); return; }
     const al=e.target.closest("[data-alvo]"); if(al) return goTo(al.dataset.alvo);
-    if(e.target.closest("[data-new-post]")) return postSheet();
+    const np=e.target.closest("[data-new-post]"); if(np) return postSheet(np.dataset.newPost);
+    const tf=e.target.closest("[data-tipo-f]"); if(tf){ C.tipoF=tf.dataset.tipoF; L.render(); return; }
+    const pcp=e.target.closest("[data-pc-post]"); if(pcp) return postcardPost(pcp.dataset.pcPost);
     const uw=e.target.closest("[data-unwish]"); if(uw) return toggleSave(uw.dataset.unwish,"");
     const dp=e.target.closest("[data-del-post]"); if(dp) return delPost(dp.dataset.delPost, dp);
     const fw=e.target.closest("[data-follow]"); if(fw) return toggleFollow(fw.dataset.follow);
@@ -438,7 +579,7 @@ function bindCommunity(){
   });
 }
 // the page re-renders #view; rebind when a community view is shown
-L.onAfterRender(()=>{ const v=document.getElementById("view"); if(v && ["comunidade","perfil","privacidade"].includes(L.S.view)){ delete v.dataset.cb; bindCommunity(); } });
+L.onAfterRender(()=>{ const v=document.getElementById("view"); if(v && ["comunidade","perfil","privacidade"].includes(L.S.view)){ delete v.dataset.cb; bindCommunity(); } if(L.S.view==="comunidade") drawCommunityMap(); });
 
 function goTo(alvo){
   const [tipo,id]=alvo.split(":"); C.open.add(alvo);
@@ -459,7 +600,7 @@ function vPerfil(){
   const mine = C.user && C.user.uid===uid;
   let p = C.profiles[uid]; if(!p) want([uid]);
   if(!p && mine) p = {nome:C.user.displayName||(C.user.email||"").split("@")[0], paises:[], foto:googlePhoto(C.user)};
-  loadFollowCounts(uid);
+  loadFollowCounts(uid); loadMembers();
   const fc = (C.followCache && C.followCache.uid===uid) ? C.followCache : null;
   const seus = C.comments.filter(c=>c.uid===uid).slice(0,30);
   const salvos = mine ? Object.values(C.saved) : [];
@@ -477,7 +618,8 @@ function vPerfil(){
     ${mine && C.lastError?`<div class="verify-box"><strong>Algo não funcionou</strong><span class="small">${esc(C.lastError)}</span></div>`:""}
     ${mine && !C.verified?`<div class="verify-box"><strong>Confirme seu e-mail</strong><span class="small">Enviamos um link para ${esc(C.user.email||"")}. Depois de abrir, toque em "Já confirmei".</span><div class="actions"><button class="btn" type="button" data-reload>Já confirmei</button><button class="btn plain" type="button" data-verify>Reenviar</button></div></div>`:""}
     ${(p&&p.paises||[]).length?`<h2 class="h3 hoje-h">Países que já visitou</h2><div class="chips">${p.paises.map(a=>`<span class="chip"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))}</span>`).join("")}</div>`:""}
-    ${(()=>{ const theirs=C.posts.filter(x=>x.uid===uid); return theirs.length?`<h2 class="h3 hoje-h">Dicas publicadas</h2><div class="posts">${theirs.map(postCard).join("")}</div>`:""; })()}
+    ${passportHtml(uid,p,mine)}
+    ${(()=>{ const theirs=C.posts.filter(x=>x.uid===uid); return theirs.length?`<h2 class="h3 hoje-h">Publicações</h2><div class="posts">${theirs.map(postCard).join("")}</div>`:(mine?`<h2 class="h3 hoje-h">Publicações</h2><p class="small muted">Você ainda não publicou. <button type="button" class="link-btn small" data-new-post="post">Fazer a primeira publicação</button></p>`:""); })()}
     ${mine?wishlist(salvos):""}
     <h2 class="h3 hoje-h">Comentários</h2>
     ${seus.length?`<div class="feed">${seus.map(c=>`<div class="feed-item"><div class="c-body"><div class="c-meta"><span class="tiny">em <button type="button" class="link-btn tiny" data-alvo="${esc(c.alvo)}">${esc(c.alvoTitulo||"um lugar")}</button> · ${esc(when(c.em))}</span></div><div class="c-text">${esc(c.texto)}</div></div></div>`).join("")}</div>`:`<p class="small muted">Nenhum comentário ainda.</p>`}
@@ -623,7 +765,8 @@ function vPrivacidade(){
     <p class="eyebrow">Privacidade</p><h1 class="h1">Seus dados na comunidade.</h1>
     <div class="gsec" style="margin-top:28px"><ul>
       <li><strong>O que guardamos:</strong> seu nome, e-mail (só para login), foto do Google se você entrar com Google, e o que você escreve no perfil e nos comentários.</li>
-      <li><strong>Quem vê:</strong> nome, foto, perfil, comentários e quem você segue ficam visíveis para quem acessa o site. Seu e-mail e seus salvos não aparecem para ninguém.</li>
+      <li><strong>Quem vê:</strong> nome, foto, perfil, publicações, comentários e quem você segue ficam visíveis para quem acessa o site. Seu e-mail e seus salvos não aparecem para ninguém.</li>
+      <li><strong>Check-in:</strong> só é salvo quando você publica um. Guardamos a cidade e as coordenadas do centro dela, nunca a sua posição exata.</li>
       <li><strong>Onde fica:</strong> no Firebase, serviço do Google, usado para login e banco de dados.</li>
       <li><strong>Para que usamos:</strong> só para a comunidade funcionar. Não vendemos nem compartilhamos seus dados.</li>
       <li><strong>Como apagar:</strong> no seu perfil, toque em "Excluir minha conta". Isso apaga a conta, os comentários, os salvos e quem você segue.</li>

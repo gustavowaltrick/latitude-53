@@ -1,6 +1,6 @@
 rules_version = '2';
 // Regras da comunidade Latitude 53.
-// Perfis, comentários e quem segue quem são públicos para leitura.
+// Perfis, publicações, comentários e quem segue quem são públicos para leitura.
 // Cada pessoa só altera o que é dela. Autores (coleção "admins") podem apagar comentários.
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -61,17 +61,25 @@ service cloud.firestore {
     }
 
     match /posts/{id} {
+      // tipo: post (publicação livre), dica ou checkin. Posts antigos não têm tipo e contam como dica.
       allow read: if true;
       allow create: if verified()
-        && request.resource.data.keys().hasOnly(['uid','nome','titulo','cidade','paisA2','texto','link','temFoto','em'])
+        && request.resource.data.keys().hasOnly(['uid','nome','tipo','titulo','cidade','paisA2','texto','link','temFoto','lat','lng','em'])
         && request.resource.data.uid == request.auth.uid
-        && str(request.resource.data.titulo, 100) && request.resource.data.titulo.size() > 0
+        && request.resource.data.get('tipo','dica') in ['post','dica','checkin']
+        && str(request.resource.data.get('titulo',''), 100)
         && str(request.resource.data.nome, 60)
         && str(request.resource.data.get('cidade',''), 60)
         && str(request.resource.data.get('paisA2',''), 2)
         && str(request.resource.data.get('texto',''), 1500)
         && str(request.resource.data.get('link',''), 300)
         && request.resource.data.get('temFoto', false) is bool
+        && (request.resource.data.get('titulo','').size() > 0
+            || request.resource.data.get('texto','').size() > 0
+            || request.resource.data.get('temFoto', false) == true
+            || (request.resource.data.get('tipo','dica') == 'checkin' && request.resource.data.get('cidade','').size() > 0))
+        && (!('lat' in request.resource.data) || (request.resource.data.lat is number && request.resource.data.lat >= -90 && request.resource.data.lat <= 90))
+        && (!('lng' in request.resource.data) || (request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180))
         && request.resource.data.em == request.time;
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
       allow update: if false;
