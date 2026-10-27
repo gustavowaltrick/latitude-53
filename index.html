@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Latitude 53</title>
-<meta name="description" content="Roteiro, mapa e guia da mudança de Gustavo e Priscila da Bahia para a Irlanda.">
+<meta name="description" content="Comunidade de viajantes: mapa de onde você já esteve, viagens com amigos, dicas e a mudança de Gustavo e Priscila para a Irlanda.">
 <meta name="theme-color" content="#fbfbfd">
 <meta property="og:title" content="Latitude 53">
 <meta property="og:description" content="Da Bahia para a Irlanda, passando por Lisboa e Amsterdam.">
@@ -25,6 +25,81 @@
 <script>try{var t=localStorage.getItem("lat53-theme");document.documentElement.setAttribute("data-theme",t==="dark"?"dark":"light");if(t==="dark")document.querySelector('meta[name="theme-color"]').setAttribute("content","#0b0e14");}catch(e){}</script>
 </head>
 <body>
+<div id="splash" role="status" aria-label="Abrindo o Latitude 53">
+<style>
+#splash{position:fixed;inset:0;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;overflow:hidden;color:#fff;cursor:pointer;
+  font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(120% 70% at 50% 108%,#1e7a6a 0%,rgba(30,122,106,0) 55%),radial-gradient(90% 60% at 85% 0%,#163f8a 0%,rgba(22,63,138,0) 60%),linear-gradient(180deg,#050f26 0%,#0a2350 55%,#0d3a5e 100%);
+  transition:opacity .7s ease,transform .8s cubic-bezier(.6,0,.2,1),filter .7s ease}
+#splash.go{opacity:0;transform:scale(1.08);filter:blur(6px);pointer-events:none}
+#splash .stars i{position:absolute;width:2px;height:2px;border-radius:50%;background:#fff;opacity:.5;animation:sp-tw 2.8s ease-in-out infinite}
+@keyframes sp-tw{50%{opacity:.08}}
+#splash .globe{position:absolute;left:50%;bottom:-118vw;width:160vw;height:160vw;max-width:1400px;max-height:1400px;transform:translateX(-50%);border-radius:50%;
+  background:radial-gradient(circle at 50% 0%,rgba(120,220,200,.22),rgba(120,220,200,0) 40%);box-shadow:0 -1px 0 rgba(160,230,220,.55),0 -30px 80px rgba(52,199,150,.18) inset}
+#splash .globe::before,#splash .globe::after{content:"";position:absolute;inset:8% 8% auto;height:84%;border-radius:50%;border-top:1px solid rgba(255,255,255,.08)}
+#splash .globe::after{inset:17% 17% auto;height:66%}
+#splash .cloud{position:absolute;height:26px;border-radius:30px;background:rgba(255,255,255,.75);filter:blur(7px);opacity:.22;animation:sp-cloud linear infinite}
+@keyframes sp-cloud{from{transform:translateX(110vw)}to{transform:translateX(-60vw)}}
+#splash .scene{position:relative;width:min(88vw,430px);aspect-ratio:360/230}
+#splash svg{width:100%;height:100%;overflow:visible}
+#splash .trail{stroke-dasharray:420;stroke-dashoffset:420;animation:sp-draw 2.4s cubic-bezier(.45,.05,.35,1) infinite}
+@keyframes sp-draw{0%{stroke-dashoffset:420;opacity:1}85%{stroke-dashoffset:0;opacity:1}100%{stroke-dashoffset:0;opacity:0}}
+#splash .ring{transform-origin:330px 40px;animation:sp-ring 2.4s ease-out infinite}
+@keyframes sp-ring{0%,70%{transform:scale(.4);opacity:0}80%{opacity:.9}100%{transform:scale(2.6);opacity:0}}
+#splash .lbl{font:600 11px ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.08em;fill:rgba(255,255,255,.72)}
+#splash .word{font-size:clamp(34px,10vw,52px);font-weight:700;letter-spacing:-.02em;margin-top:6px;display:flex}
+#splash .word span{display:inline-block;opacity:0;transform:translateY(18px);animation:sp-up .7s cubic-bezier(.2,.9,.25,1.2) forwards}
+@keyframes sp-up{to{opacity:1;transform:none}}
+#splash .lat{font:600 15px ui-monospace,"SF Mono",Menlo,monospace;letter-spacing:.12em;color:#7ff0c0;min-height:20px}
+#splash .cap{font-size:14px;color:rgba(255,255,255,.66);min-height:20px;transition:opacity .25s}
+@media (prefers-reduced-motion:reduce){#splash *{animation:none!important}#splash .trail{stroke-dashoffset:0}#splash .word span{opacity:1;transform:none}}
+</style>
+<div class="stars" aria-hidden="true"></div>
+<div class="globe" aria-hidden="true"></div>
+<i class="cloud" style="top:18%;width:120px;animation-duration:14s;animation-delay:-3s" aria-hidden="true"></i>
+<i class="cloud" style="top:30%;width:70px;animation-duration:9s;animation-delay:-6s" aria-hidden="true"></i>
+<i class="cloud" style="top:64%;width:160px;animation-duration:18s;animation-delay:-11s;opacity:.14" aria-hidden="true"></i>
+<div class="scene" aria-hidden="true">
+<svg viewBox="0 0 360 230">
+  <defs><linearGradient id="sp-g" x1="0" x2="1"><stop offset="0" stop-color="#7ff0c0" stop-opacity=".2"/><stop offset="1" stop-color="#ffffff"/></linearGradient></defs>
+  <path id="sp-path" d="M30 200 C 110 40, 230 10, 330 40" fill="none" stroke="rgba(255,255,255,.22)" stroke-width="1.6" stroke-dasharray="1 7" stroke-linecap="round"/>
+  <path class="trail" d="M30 200 C 110 40, 230 10, 330 40" fill="none" stroke="url(#sp-g)" stroke-width="2.4" stroke-linecap="round"/>
+  <circle cx="30" cy="200" r="4.5" fill="#7ff0c0"/><text class="lbl" x="30" y="222" text-anchor="middle">14°S</text>
+  <circle class="ring" cx="330" cy="40" r="9" fill="none" stroke="#7ff0c0" stroke-width="1.5"/>
+  <circle cx="330" cy="40" r="4.5" fill="#fff"/><text class="lbl" x="330" y="22" text-anchor="middle">53°N</text>
+  <g id="sp-plane">
+    <path d="M14 0C14-1.2 12.5-1.8 11-1.8L4-1.8L-3-10L-6-10L-1.5-1.8L-8.5-1.8L-11-5L-13-5L-11.8 0L-13 5L-11 5L-8.5 1.8L-1.5 1.8L-6 10L-3 10L4 1.8L11 1.8C12.5 1.8 14 1.2 14 0Z" fill="#fff" transform="scale(1.35)" style="filter:drop-shadow(0 4px 6px rgba(0,0,0,.35))"/>
+    <animateMotion dur="2.4s" repeatCount="indefinite" rotate="auto" keyPoints="0;1;1" keyTimes="0;.85;1" calcMode="spline" keySplines=".45 .05 .35 1;0 0 1 1"><mpath href="#sp-path" xlink:href="#sp-path"/></animateMotion>
+  </g>
+</svg>
+</div>
+<div class="word" aria-hidden="true"></div>
+<div class="lat" aria-hidden="true">14°51′S</div>
+<div class="cap">Fazendo o check-in…</div>
+<script>
+(function(){
+  var s=document.getElementById("splash"), t0=Date.now(), parts={app:0,auth:0}, ready=false, gone=false, loaded=document.readyState==="complete";
+  var meta=document.querySelector('meta[name="theme-color"]'), oldColor=meta&&meta.getAttribute("content"); if(meta) meta.setAttribute("content","#050f26");
+  var st=s.querySelector(".stars"); for(var i=0;i<46;i++){ var e=document.createElement("i"); e.style.left=(Math.random()*100)+"%"; e.style.top=(Math.random()*62)+"%"; e.style.animationDelay=(-Math.random()*3)+"s"; if(Math.random()<.2){ e.style.width=e.style.height="3px"; } st.appendChild(e); }
+  var w=s.querySelector(".word"); "Latitude 53".split("").forEach(function(ch,i){ var sp=document.createElement("span"); sp.textContent=ch===" "?" ":ch; sp.style.animationDelay=(.15+i*.05)+"s"; w.appendChild(sp); });
+  // latitude ticks from Bahia (14°51′S) to Dublin (53°21′N) in step with the plane
+  var lat=s.querySelector(".lat"), reduce=matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if(reduce){ var pl=document.getElementById("sp-plane"), am=pl&&pl.querySelector("animateMotion"); if(am) am.parentNode.removeChild(am); if(pl) pl.setAttribute("transform","translate(300 34) rotate(8)"); }
+  function fmt(v){ var a=Math.abs(v), d=Math.floor(a), m=Math.round((a-d)*60); if(m===60){d++;m=0;} return d+"°"+(m<10?"0":"")+m+"′"+(v<0?"S":"N"); }
+  (function tick(){ if(gone) return; var k=((Date.now()-t0)%2400)/2400; k=Math.min(1,k/.85); var e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2; lat.textContent=fmt(-14.85+(53.35+14.85)*(reduce?1:e)); requestAnimationFrame(tick); })();
+  var caps=["Fazendo o check-in…","Despachando a bagagem…","Embarque autorizado","Decolando…","Rumo ao norte"], ci=0, cap=s.querySelector(".cap");
+  var capT=setInterval(function(){ ci=(ci+1)%caps.length; cap.style.opacity=0; setTimeout(function(){ cap.textContent=caps[ci]; cap.style.opacity=1; },220); },1100);
+  function hide(){ if(gone) return; gone=true; clearInterval(capT); cap.textContent="Bem-vindo a bordo"; s.classList.add("go");
+    if(meta){ var dark=document.documentElement.getAttribute("data-theme")==="dark"; meta.setAttribute("content",dark?"#0b0e14":(oldColor||"#fbfbfd")); }
+    setTimeout(function(){ if(s.parentNode) s.parentNode.removeChild(s); },800); }
+  function check(){ if(ready||!(parts.app&&parts.auth&&loaded)) return; ready=true; setTimeout(hide,Math.max(0,2300-(Date.now()-t0))); }
+  window.addEventListener("load",function(){ loaded=true; check(); });
+  window.__splashDone=function(p){ parts[p]=1; check(); };
+  s.addEventListener("click",hide);
+  setTimeout(hide,9000);   // nunca prende a pessoa aqui
+})();
+</script>
+</div>
 <div id="app"></div>
 <noscript><p style="padding:24px;font-family:system-ui">Ative o JavaScript para ver o roteiro.</p></noscript>
 <script src="world.js"></script>
@@ -34,6 +109,7 @@
 <script src="app.js"></script>
 <script src="firebase-config.js"></script>
 <script src="community.js"></script>
+<script>if(!(window.FIREBASE_CONFIG&&window.FIREBASE_CONFIG.apiKey)&&window.__splashDone) window.__splashDone("auth");</script>
 <script>
 if("serviceWorker" in navigator){ window.addEventListener("load",function(){ navigator.serviceWorker.register("sw.js").catch(function(){}); }); }
 </script>

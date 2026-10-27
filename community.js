@@ -58,7 +58,7 @@ L.onAfterRender(decorate);
 
 /* ---------- load the Firebase SDK, then start ---------- */
 function load(src){ return new Promise((res,rej)=>{ const s=document.createElement("script"); s.src=SDK+src; s.onload=res; s.onerror=()=>rej(new Error("Não carregou "+src)); document.head.appendChild(s); }); }
-load("firebase-app-compat.js").then(()=>Promise.all([load("firebase-auth-compat.js"),load("firebase-firestore-compat.js")])).then(start).catch(()=>{ C.failed=true; L.render(); });
+load("firebase-app-compat.js").then(()=>Promise.all([load("firebase-auth-compat.js"),load("firebase-firestore-compat.js")])).then(start).catch(()=>{ C.failed=true; if(window.__splashDone) window.__splashDone("auth"); L.render(); });
 
 function start(){
   fb = firebase.initializeApp(CFG);
@@ -84,6 +84,7 @@ function start(){
   auth.getRedirectResult().catch(e=>authError(e));
   auth.onAuthStateChanged(async u=>{
     const had=cachedUser(); const first=!C.authKnown; C.authKnown=true;
+    if(window.__splashDone) window.__splashDone("auth");
     if(!u && first && had && had.uid) toast("Sua sessão terminou neste aparelho. Entre de novo.");
     cacheUser(u ? {uid:u.uid, nome:(C.profiles[u.uid]&&C.profiles[u.uid].nome)||u.displayName||"", foto:googlePhoto(u)} : null);
     C.unsub.forEach(f=>f()); C.unsub=[]; C.user=u; C.me=null; C.following=new Set(); C.saved={}; C.myTrips=[]; C.invites=[]; C.sentInv=[];

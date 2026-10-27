@@ -221,6 +221,7 @@ function render(){
   afterRender();
   try{ choreograph(entering); }catch(e){}
   EXT.after.forEach(f=>{ try{ f(entering); }catch(e){ showFatal("Extensão: "+((e&&e.message)||e)); } });
+  if(S.loaded && window.__splashDone) window.__splashDone("app");
 }
 function safeView(){
   try{ return renderView(); }

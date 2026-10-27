@@ -1,12 +1,12 @@
 {
  "name": "Latitude 53",
  "short_name": "Latitude 53",
- "description": "Roteiro, mapa e guia da mudança de Gustavo e Priscila para a Irlanda.",
+ "description": "Comunidade de viajantes: seu mapa, viagens com amigos e dicas.",
  "lang": "pt-BR",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
- "background_color": "#ffffff",
+ "background_color": "#050f26",
  "theme_color": "#fbfbfd",
  "icons": [
   {
