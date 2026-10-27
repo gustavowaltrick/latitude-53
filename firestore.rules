@@ -22,7 +22,7 @@ service cloud.firestore {
     match /profiles/{uid} {
       allow read: if true;
       allow create, update: if isMe(uid)
-        && request.resource.data.keys().hasOnly(['nome','insta','cidade','bio','paises','foto','avatar','criadoEm'])
+        && request.resource.data.keys().hasOnly(['nome','insta','cidade','bio','paises','foto','avatar','cidades','proximo','criadoEm'])
         && str(request.resource.data.nome, 60) && request.resource.data.nome.size() > 0
         && str(request.resource.data.get('insta',''), 30)
         && str(request.resource.data.get('cidade',''), 60)
@@ -30,7 +30,10 @@ service cloud.firestore {
         && str(request.resource.data.get('foto',''), 500)
         && str(request.resource.data.get('avatar',''), 140000)
         && request.resource.data.get('paises', []) is list
-        && request.resource.data.get('paises', []).size() <= 200;
+        && request.resource.data.get('paises', []).size() <= 200
+        && request.resource.data.get('cidades', []) is list
+        && request.resource.data.get('cidades', []).size() <= 300
+        && str(request.resource.data.get('proximo',''), 80);
       allow delete: if isMe(uid);
     }
 

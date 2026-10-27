@@ -215,7 +215,7 @@ function render(){
   const entering = shown!==lastShown && shown!=="loading";
   if(entering && lastShown!==null) window.scrollTo(0,0); else window.scrollTo(0,scrollY);
   S.mapAnim = entering && S.view==="mapa" && !reduceMotion();
-  if(entering && S.view==="inicio") S._routeAnim = true;
+  if(entering) S._routeAnim = true;
   lastShown = shown;
   bindShell();
   afterRender();
@@ -547,7 +547,7 @@ function afterRender(){
   };
   const cov = $("#add-cover"); if(cov) cov.onclick=openSettings;
   if(S.view==="mapa"){ try{ drawMap(); }catch(e){ showFatal("Mapa: "+((e&&e.message)||e)); } }
-  if(S.view==="inicio" && $("#rota-map")){ try{ drawRoute(S._routeAnim); }catch(e){} S._routeAnim=false; }
+  if($("#rota-map")){ try{ drawRoute(S._routeAnim); }catch(e){} S._routeAnim=false; }
   try{ syncResumo(); }catch(e){}
 }
 
@@ -1187,8 +1187,8 @@ const pcBtn = ref => `<button type="button" class="link-btn small pc-btn" data-p
 
 window.LAT53 = {
   S, render, toast, sheet, esc, safeUrl, flag, countryName, countryOptions, fmtDay, nrm: t=>nrm(t), reduceMotion,
-  postcard: openPostcard, loadMapLib, loadCities, nearestCity: (a,b)=>nearestCity(a,b), canonCity: (a,b)=>canonCity(a,b), stateName, routeStops, relTime,
-  setLive(list){ const k=JSON.stringify(list||[]); if(k===S._liveKey) return; S._liveKey=k; S.live=list||[]; if(S.view==="inicio" && S.loaded) render(); },
+  postcard: openPostcard, homeView: ()=>vInicio(), searchCities: (q,n)=>searchCities(q,n), loadMapLib, loadCities, nearestCity: (a,b)=>nearestCity(a,b), canonCity: (a,b)=>canonCity(a,b), stateName, routeStops, relTime,
+  setLive(list){ const k=JSON.stringify(list||[]); if(k===S._liveKey) return; S._liveKey=k; S.live=list||[]; if(document.getElementById("rota-map") && S.loaded) render(); },
   addView(key,label,fn,opts){ opts=opts||{}; EXT.views[key]=fn; if(!opts.hidden && !VIEWS.some(v=>v[0]===key)){ if(opts.after){ const i=VIEWS.findIndex(v=>v[0]===opts.after); VIEWS.splice(i<0?VIEWS.length:i+1,0,[key,label]); } else VIEWS.push([key,label]); } },
   onAfterRender(f){ EXT.after.push(f); },
   addNav(f){ EXT.navExtra.push(f); },

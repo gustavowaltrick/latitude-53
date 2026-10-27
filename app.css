@@ -765,3 +765,44 @@ main.enter .place-chip .flag{animation:wave 1.4s var(--spring) .4s backwards}
 @media (prefers-reduced-motion:reduce){ .stamp.on .st-ring,.cr-track i{animation:none} }
 @media (max-width:520px){ .stamps{grid-template-columns:repeat(3,1fr);gap:16px 6px;padding:18px 10px} .st-ring{width:62px;height:62px} .st-i{font-size:24px} .st-n{font-size:11px} .st-h{font-size:10.5px} }
 .pub-toggle.tile{flex-direction:row}
+
+/* ===================== INÍCIO DA COMUNIDADE ===================== */
+.home-hero .h-hero{max-width:12ch}
+.home-cta{margin:22px 0 6px;display:flex;gap:10px;flex-wrap:wrap}
+.trip-card{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:0;border-radius:30px;overflow:hidden;color:inherit;background:var(--glass-fill);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi),var(--glass-drop);transition:transform .45s var(--spring,cubic-bezier(.2,.8,.2,1)),box-shadow .3s}
+.trip-card:hover{text-decoration:none;transform:translateY(-4px)}
+.tc-img{display:block;min-height:260px;position:relative}
+.tc-img img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.tc-body{display:flex;flex-direction:column;gap:8px;padding:30px}
+.tc-t{display:block;margin:0}
+.tc-sub{margin:0;font-size:19px}
+.tc-route{display:flex;align-items:center;gap:6px;font-size:22px;margin-top:6px;flex-wrap:wrap}
+.tc-arrow{font-size:14px;color:var(--ink-3)}
+.tc-meta{margin-top:auto;padding-top:10px;font-size:15px;color:var(--ink-2)}
+.tc-meta b{color:var(--ink)}
+.tc-go{color:var(--accent-ink);font-weight:600}
+@media (max-width:720px){ .trip-card{grid-template-columns:1fr} .tc-img{min-height:200px} .tc-body{padding:22px} }
+.dest-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}
+.dest{display:flex;align-items:center;gap:12px;text-align:left;border:1px solid var(--glass-edge);background:var(--glass-fill);box-shadow:var(--glass-hi);border-radius:20px;padding:12px 14px;cursor:pointer;color:inherit}
+.dest .c-body{display:flex;flex-direction:column;min-width:0}
+.dest .m-name{font-weight:600;font-size:15px}
+.dest-to{font-size:14px;color:var(--ink-2)}
+.dest .dest-to{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.faces{display:flex;gap:14px;overflow-x:auto;scrollbar-width:none;padding:4px 2px 8px}
+.faces::-webkit-scrollbar{display:none}
+.face{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:6px;border:0;background:none;cursor:pointer;color:inherit;width:72px}
+.face .tiny{max-width:72px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ===================== MAPA PESSOAL ===================== */
+.pmap{border-radius:24px;overflow:hidden;background:var(--glass-fill);border:1px solid var(--glass-edge);box-shadow:var(--glass-hi),var(--glass-drop);aspect-ratio:960/520}
+.pmap svg{display:block;width:100%;height:100%}
+.pm-on{fill:var(--visited)}
+:root[data-theme="dark"] .pm-on{fill:#2a8c47}
+.pm-pin{fill:var(--visited-pin);stroke:#fff;stroke-width:2;vector-effect:non-scaling-stroke}
+:root[data-theme="dark"] .pm-pin{fill:#e9fff0;stroke:#1f7a35}
+.pmap-leg{display:flex;gap:16px;margin-top:10px}
+.pmap-leg i{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:6px;vertical-align:-1px}
+.pmap-leg .lg-c{background:var(--visited)}
+.pmap-leg .lg-p{background:var(--visited-pin);border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px var(--line)}
+.city-list .pn .tiny{color:var(--ink-2)}
+.city-list[hidden]{display:none}

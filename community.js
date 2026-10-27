@@ -33,6 +33,8 @@ function dbError(e, what){
 }
 
 /* ---------- views are registered right away so links like #comunidade work ---------- */
+L.addView("inicio","Início",vHome);
+L.addView("viagem","Nossa viagem",()=>L.homeView(),{after:"inicio"});
 L.addView("comunidade","Comunidade",vComunidade,{after:"guia"});
 L.addView("perfil","Perfil",vPerfil,{hidden:true});
 L.addView("privacidade","Privacidade",vPrivacidade,{hidden:true});
@@ -114,6 +116,10 @@ function cleanProfile(p){
   o.paises=(p.paises||[]).filter(a=>/^[A-Z]{2}$/.test(a)).slice(0,200);
   o.foto=p.foto&&/^https:\/\/[a-z0-9.-]*googleusercontent\.com\//i.test(p.foto)?p.foto:"";
   if(typeof p.avatar==="string" && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(p.avatar) && p.avatar.length<=140000) o.avatar=p.avatar;
+  const cs=(Array.isArray(p.cidades)?p.cidades:[]).filter(c=>c && typeof c.n==="string" && /^[A-Z]{2}$/.test(c.c||"") && isFinite(c.la) && isFinite(c.lo))
+    .slice(0,300).map(c=>({n:c.n.slice(0,60), c:c.c, s:String(c.s||"").slice(0,60), la:Math.round(c.la*1000)/1000, lo:Math.round(c.lo*1000)/1000}));
+  if(cs.length) o.cidades=cs;          // only sent when used, so older rules keep working
+  const pr=String(p.proximo||"").trim().slice(0,80); if(pr) o.proximo=pr;
   if(p.criadoEm) o.criadoEm=p.criadoEm;
   return o;
 }
@@ -140,7 +146,8 @@ const badge = uid => C.admins.has(uid) ? `<span class="badge-autor">Autor</span>
 function when(ts){ const d=ts&&ts.toDate?ts.toDate():null; if(!d) return "agora"; const s=(Date.now()-d)/1000;
   if(s<60) return "agora"; if(s<3600) return Math.floor(s/60)+" min"; if(s<86400) return Math.floor(s/3600)+" h"; if(s<604800) return Math.floor(s/86400)+" d";
   return d.toLocaleDateString("pt-BR",{day:"numeric",month:"short"}); }
-function refresh(){ decorate(false); if(["comunidade","perfil"].includes(L.S.view)) L.render(); }
+const CVIEWS=["inicio","comunidade","perfil","privacidade"];
+function refresh(){ decorate(false); if(["inicio","comunidade","perfil"].includes(L.S.view)) L.render(); }
 function needLogin(msg){ toast(msg||"Entre na sua conta para isso."); authSheet("entrar"); }
 function authError(e){
   const m={ "auth/email-already-in-use":"Esse e-mail já tem conta. Use Entrar.", "auth/invalid-email":"E-mail inválido.",
@@ -296,6 +303,128 @@ function authSheet(mode){
   dlg.addEventListener("cancel",e=>{ e.preventDefault(); close(); });
 }
 
+/* ---------- Início para todos: comunidade primeiro, a viagem do casal como destaque ---------- */
+const cidadesOf = p => Array.isArray(p&&p.cidades) ? p.cidades.filter(c=>c && typeof c.n==="string") : [];
+function communityTotals(){
+  const ms=C.members||[]; const paises=new Set(), cidades=new Set();
+  ms.forEach(m=>{ (m.paises||[]).forEach(a=>paises.add(a)); cidadesOf(m).forEach(c=>cidades.add(c.c+"|"+L.nrm(c.n))); });
+  return {membros:ms.length, paises:paises.size, cidades:cidades.size, posts:C.posts.length};
+}
+function tripCard(){
+  const S=L.S; if(!(S.dias||[]).length) return "";
+  const start=new Date((S.site.partida||"2026-12-22")+"T00:00:00"); const diff=Math.ceil((start-new Date())/86400000);
+  const stops=L.routeStops(); const live=(S.live||[]).slice(-1)[0];
+  const t=new Date(); const iso=t.getFullYear()+"-"+String(t.getMonth()+1).padStart(2,"0")+"-"+String(t.getDate()).padStart(2,"0");
+  const first=stops[0], last=stops[stops.length-1];
+  const running = first && last && iso>=first.data && iso<=last.ate;
+  let now=null; if(running){ now = live ? live.cidade : (stops.filter(s=>s.data<=iso).slice(-1)[0]||{}).cidade; }
+  const capa=S.site.capaData||(S.site.capaId?"/_blob/"+S.site.capaId:"");
+  const route=stops.filter(s=>s.paisA2).map(s=>`<span class="flag" title="${esc(s.cidade)}">${L.flag(s.paisA2)}</span>`).join('<span class="tc-arrow" aria-hidden="true">→</span>');
+  return `<a class="trip-card" href="#viagem">
+    ${capa?`<span class="tc-img"><img src="${esc(capa)}" alt="" loading="lazy"></span>`:""}
+    <span class="tc-body">
+      <span class="eyebrow">${running?'<span class="live-dot" aria-hidden="true"></span>Ao vivo · ':""}Viagem em destaque</span>
+      <span class="h2 tc-t">${esc(S.site.eyebrow||"Gustavo e Priscila")}</span>
+      <span class="lead tc-sub">${esc(S.site.subtitulo||"Da Bahia para a Irlanda, passando por Lisboa e Amsterdam.")}</span>
+      <span class="tc-route">${route}</span>
+      <span class="tc-meta">${now?`Agora em <b>${esc(now)}</b>`:diff>0?`<b class="num">${diff}</b> dias para o embarque`:"Viagem concluída"} · <span class="tc-go">Acompanhar ›</span></span>
+    </span></a>`;
+}
+function vHome(){
+  loadMembers();
+  const me=C.user; const t=communityTotals();
+  const mp = me ? (C.me||C.profiles[me.uid]||{}) : null;
+  const latest=C.posts.slice(0,4);
+  const indo=(C.members||[]).filter(m=>m.proximo).slice(0,12);
+  const novos=(C.members||[]).slice(0,14);
+  setTimeout(bindCommunity,0);
+  const n=v=>C.members===null?"–":v;
+  return `<section class="hero home-hero"><div class="wrap">
+    <p class="eyebrow">Latitude 53 · comunidade de viajantes</p>
+    <h1 class="h-hero">O mapa de quem viaja.</h1>
+    <p class="lead">Marque os países e as cidades que você já conheceu, conte para onde vai e troque dicas com gente que está na estrada.</p>
+    <div class="actions home-cta">${me
+      ? `<button class="btn" type="button" data-new-post="post">Publicar</button><button class="btn secondary" type="button" data-go-me>Meu mapa</button>`
+      : `<button class="btn" type="button" data-login>Criar minha conta</button><a class="btn secondary" href="#comunidade">Explorar a comunidade</a>`}</div>
+    <div class="count">
+      <div><b class="num">${n(t.membros)}</b><span>${t.membros===1?"viajante":"viajantes"}</span></div>
+      <div><b class="num">${n(t.paises)}</b><span>países visitados</span></div>
+      <div><b class="num">${n(t.cidades)}</b><span>cidades no mapa</span></div>
+    </div>
+  </div></section>
+
+  ${me?`<section class="band"><div class="wrap">
+    <div class="head-row"><div><p class="eyebrow">Seu mapa</p><h2 class="h2">${(mp.paises||[]).length?`${(mp.paises||[]).length} ${(mp.paises||[]).length===1?"país":"países"}${cidadesOf(mp).length?` e ${cidadesOf(mp).length} ${cidadesOf(mp).length===1?"cidade":"cidades"}`:""}.`:"Onde você já esteve?"}</h2>
+      <p class="small muted" style="margin:6px 0 0">${(mp.paises||[]).length?"É o mapa que aparece quando alguém visita o seu perfil.":"Marque países e cidades e o seu mapa aparece no seu perfil para a comunidade."}</p></div>
+      <div class="actions"><button class="btn secondary" type="button" data-edit-me>${(mp.paises||[]).length?"Editar meu mapa":"Montar meu mapa"}</button></div></div>
+    ${(mp.paises||[]).length||cidadesOf(mp).length?`<div class="pmap" id="pmap" data-uid="${esc(me.uid)}" role="img" aria-label="Seu mapa de viagens"></div>`:""}
+  </div></section>`:""}
+
+  <section class="band alt"><div class="wrap">
+    <div class="head-row"><div><p class="eyebrow">Agora na comunidade</p><h2 class="h2">Dicas, fotos e check-ins.</h2></div><a class="btn secondary" href="#comunidade">Ver tudo</a></div>
+    ${latest.length?`<div class="posts">${latest.map(postCard).join("")}</div>`:`<div class="empty-state"><p class="h3">${C.ready?"Seja a primeira publicação":"Carregando…"}</p><p class="small">Uma dica de lugar, uma foto ou onde você está agora.</p></div>`}
+  </div></section>
+
+  ${indo.length?`<section class="band"><div class="wrap">
+    <p class="eyebrow">Próximos destinos</p><h2 class="h2" style="margin-bottom:18px">Para onde a comunidade vai.</h2>
+    <div class="dest-list">${indo.map(m=>`<button type="button" class="dest" data-profile="${esc(m.id)}">${avatar(m.id,40)}<span class="c-body"><span class="m-name">${esc(m.nome||"Viajante")} ${badge(m.id)}</span><span class="dest-to">✈︎ ${esc(m.proximo)}</span></span></button>`).join("")}</div>
+  </div></section>`:""}
+
+  <section class="band"><div class="wrap">${communityMapHtml()||`<div class="empty-state"><p class="h3">O mapa da comunidade</p><p class="small">Quando os membros marcarem os países, eles aparecem aqui.</p></div>`}</div></section>
+
+  <section class="band alt"><div class="wrap">${tripCard()}</div></section>
+
+  ${novos.length?`<section class="band"><div class="wrap">
+    <div class="head-row"><div><p class="eyebrow">Membros</p><h2 class="h2">Quem chegou agora.</h2></div><a class="btn secondary" href="#comunidade">Ver todos</a></div>
+    <div class="faces">${novos.map(m=>`<button type="button" class="face" data-profile="${esc(m.id)}">${avatar(m.id,64)}<span class="tiny">${esc((m.nome||"Viajante").split(" ")[0])}</span></button>`).join("")}</div>
+  </div></section>`:""}`;
+}
+
+/* ---------- mapa pessoal (perfil e Início) ---------- */
+function profileMapHtml(uid,p){
+  const cs=cidadesOf(p); const ps=(p&&p.paises)||[];
+  if(!ps.length && !cs.length) return "";
+  const mode=C.pmapMode||"perto";
+  return `<div class="pmap-wrap">
+    <div class="head-row" style="margin:0 0 12px"><h2 class="h3">Mapa de viagens</h2>
+      <div class="segbar" role="group" aria-label="Zoom do mapa" style="margin:0"><button type="button" data-pmap="perto" aria-pressed="${mode==="perto"}">Meus lugares</button><button type="button" data-pmap="mundo" aria-pressed="${mode==="mundo"}">Mundo</button></div></div>
+    <div class="pmap" id="pmap" data-uid="${esc(uid)}" role="img" aria-label="Países e cidades visitados"></div>
+    <p class="tiny muted pmap-leg"><span><i class="lg-c"></i>País visitado</span>${cs.length?`<span><i class="lg-p"></i>Cidade</span>`:""}</p>
+  </div>`;
+}
+function drawProfileMap(animate){
+  const el=document.getElementById("pmap"); if(!el || el.querySelector("svg")) return;
+  if(!window.d3 || !window.WORLD){ if(!el.dataset.wait){ el.dataset.wait=1; L.loadMapLib().then(ok=>{ if(ok) drawProfileMap(animate); }); } return; }
+  const p=C.profiles[el.dataset.uid]||(C.me&&C.me.id===el.dataset.uid?C.me:null)||{};
+  const d3=window.d3, ps=new Set(p.paises||[]), cs=cidadesOf(p).filter(c=>isFinite(c.la)&&isFinite(c.lo));
+  const W=960,H=520;
+  const feats=topojson.feature(WORLD, WORLD.objects.countries).features.filter(f=>f.properties.a2!=="AQ");
+  const proj=d3.geoNaturalEarth1();
+  const mode=C.pmapMode||"perto";
+  const mine=feats.filter(f=>ps.has(f.properties.a2));
+  if(mode==="mundo" || (!cs.length && !mine.length)) proj.fitExtent([[4,4],[W-4,H-4]],{type:"FeatureCollection",features:feats});
+  else {
+    // fit to the cities when there are any (countries like Brazil or Russia are too big to frame a trip)
+    let pts = cs.length ? cs.map(c=>[c.lo,c.la]) : null;
+    let box = pts ? [[Math.min(...pts.map(q=>q[0])),Math.min(...pts.map(q=>q[1]))],[Math.max(...pts.map(q=>q[0])),Math.max(...pts.map(q=>q[1]))]] : d3.geoBounds({type:"FeatureCollection",features:mine});
+    let [[x0,y0],[x1,y1]]=box; if(x1<x0) { x0=-180; x1=180; }
+    const cx=(x0+x1)/2, cy=(y0+y1)/2, w=Math.max(x1-x0,14)*1.25, h=Math.max(y1-y0,8)*1.25;
+    proj.fitExtent([[24,24],[W-24,H-24]],{type:"MultiPoint",coordinates:[[cx-w/2,cy-h/2],[cx+w/2,cy+h/2]]});
+  }
+  const path=d3.geoPath(proj);
+  const svg=d3.select(el).append("svg").attr("viewBox",`0 0 ${W} ${H}`).attr("preserveAspectRatio","xMidYMid slice");
+  svg.append("g").selectAll("path").data(feats).join("path").attr("d",path).attr("class",f=>ps.has(f.properties.a2)?"rm-land pm-on":"rm-land")
+    .append("title").text(f=>L.countryName(f.properties.a2));
+  const k = mode==="mundo" ? 4 : 6;
+  const dots=svg.append("g").selectAll("circle").data(cs).join("circle")
+    .attr("cx",c=>proj([c.lo,c.la])[0]).attr("cy",c=>proj([c.lo,c.la])[1]).attr("r",animate&&!L.reduceMotion()?0:k).attr("class","pm-pin");
+  dots.append("title").text(c=>c.n+(c.s?", "+c.s:""));
+  if(animate && !L.reduceMotion()){
+    svg.selectAll(".pm-on").style("opacity",0).transition().delay((d,i)=>100+i*30).duration(600).style("opacity",1);
+    dots.transition().delay((d,i)=>350+Math.min(i,40)*25).duration(500).ease(d3.easeBackOut.overshoot(2.2)).attr("r",k);
+  }
+}
+
 /* ---------- Comunidade view ---------- */
 function loadMembers(){
   if(C.loadingMembers || !C.ready) return;
@@ -338,7 +467,7 @@ function vComunidade(){
     <h2 class="h3" style="margin:48px 0 14px">Membros</h2>
     ${C.members===null?`<p class="muted small">Carregando membros…</p>`:members.length?`<div class="members">${members.map(m=>`<div class="member">
         <button type="button" class="m-open" data-profile="${esc(m.id)}">${avatar(m.id,52)}<span class="m-name">${esc(m.nome||"Viajante")} ${badge(m.id)}</span>
-        <span class="tiny">${m.cidade?esc(m.cidade)+" · ":""}${(m.paises||[]).length} ${(m.paises||[]).length===1?"país":"países"}</span></button>
+        <span class="tiny">${m.cidade?esc(m.cidade)+" · ":""}${(m.paises||[]).length} ${(m.paises||[]).length===1?"país":"países"}${cidadesOf(m).length?` · ${cidadesOf(m).length} ${cidadesOf(m).length===1?"cidade":"cidades"}`:""}</span></button>
         ${followBtn(m.id)}</div>`).join("")}</div>`:`<div class="empty-state"><p class="h3">Ninguém ainda</p><p class="small">Crie a primeira conta.</p></div>`}
 
     <div class="head-row" style="margin:48px 0 14px"><h2 class="h3">Comentários recentes</h2></div>
@@ -492,9 +621,9 @@ function communityMapHtml(){
     <div class="chips cmap-top">${top.map(a=>`<span class="chip"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))} <b class="num">${m[a]}</b></span>`).join("")}</div>
   </div>`;
 }
-function drawCommunityMap(){
+function drawCommunityMap(animate){
   const el=document.getElementById("cmap"); if(!el || el.querySelector("svg")) return;
-  if(!window.d3 || !window.WORLD){ if(!el.dataset.wait){ el.dataset.wait=1; L.loadMapLib().then(ok=>{ if(ok) drawCommunityMap(); }); } return; }
+  if(!window.d3 || !window.WORLD){ if(!el.dataset.wait){ el.dataset.wait=1; L.loadMapLib().then(ok=>{ if(ok) drawCommunityMap(animate); }); } return; }
   const d3=window.d3, m=countryCounts(), max=Math.max(1,...Object.values(m));
   const W=960,H=470;
   const feats=topojson.feature(WORLD, WORLD.objects.countries).features.filter(f=>f.properties.a2!=="AQ");
@@ -506,7 +635,7 @@ function drawCommunityMap(){
   const p=svg.append("g").selectAll("path").data(hot).join("path").attr("d",path).attr("class","cm-hot")
     .style("fill-opacity",f=>(.28+.72*Math.sqrt(m[f.properties.a2]/max)).toFixed(2));
   p.append("title").text(f=>`${L.countryName(f.properties.a2)} · ${m[f.properties.a2]} ${m[f.properties.a2]===1?"membro":"membros"}`);
-  if(!L.reduceMotion()) p.style("opacity",0).transition().delay((d,i)=>150+i*25).duration(600).style("opacity",1);
+  if(animate && !L.reduceMotion()) p.style("opacity",0).transition().delay((d,i)=>150+i*25).duration(600).style("opacity",1);
 }
 
 /* ---------- passaporte: carimbos por participação ---------- */
@@ -520,6 +649,7 @@ const STAMPS = [
   {k:"checkin", n:"Estive aqui", i:"📍", c:"#ff375f", h:"Faça 1 check-in", ok:s=>s.checkins>=1},
   {k:"foto", n:"Olhar de fotógrafo", i:"📷", c:"#64d2ff", h:"Publique uma foto", ok:s=>s.fotos>=1},
   {k:"explorador", n:"Explorador", i:"🗺", c:"#30b05a", h:"Marque 5 países", ok:s=>s.paises>=5},
+  {k:"cidades", n:"Colecionador", i:"🏙", c:"#5856d6", h:"Marque 20 cidades", ok:s=>s.cidades>=20},
   {k:"mundo", n:"Cidadão do mundo", i:"🌍", c:"#1f7a35", h:"Marque 15 países", ok:s=>s.paises>=15},
   {k:"rota", n:"Na nossa rota", i:"⚓︎", c:"#0a84ff", h:"Visite Portugal, Holanda ou Irlanda", ok:s=>s.rota},
   {k:"turma", n:"Turma", i:"🤝", c:"#ac8e68", h:"Siga 5 pessoas", ok:s=>s.seguindo>=5},
@@ -536,7 +666,7 @@ function stampStats(uid, p, mine){
   }
   const paises=(p&&p.paises)||[];
   return {comments:C.comments.filter(c=>c.uid===uid).length, posts:posts.length, dicas:posts.filter(x=>tipoOf(x)==="dica").length,
-    checkins:posts.filter(x=>tipoOf(x)==="checkin").length, fotos:posts.filter(x=>x.temFoto).length, paises:paises.length,
+    checkins:posts.filter(x=>tipoOf(x)==="checkin").length, fotos:posts.filter(x=>x.temFoto).length, paises:paises.length, cidades:cidadesOf(p).length,
     rota:paises.some(a=>["PT","NL","IE"].includes(a)), seguindo:fc.seguindo||0, seguidores:fc.seguidores||0,
     salvos:mine?Object.keys(C.saved).length:0, pioneiro};
 }
@@ -558,7 +688,8 @@ async function delPost(id,btn){
 function bindCommunity(){
   const v=document.getElementById("view"); if(!v || v.dataset.cb===L.S.view) return; v.dataset.cb=L.S.view;
   v.addEventListener("click",async e=>{
-    if(!["comunidade","perfil","privacidade"].includes(L.S.view)) return;
+    if(!CVIEWS.includes(L.S.view)) return;
+    const pm=e.target.closest("[data-pmap]"); if(pm){ C.pmapMode=pm.dataset.pmap; C.pmapAnim=true; L.render(); return; }
     const pf=e.target.closest("[data-profile]"); if(pf){ C.perfilUid=pf.dataset.profile; L.go("perfil"); return; }
     if(e.target.closest("[data-login]")) return authSheet("criar");
     if(e.target.closest("[data-go-me]")){ C.perfilUid=C.user.uid; L.go("perfil"); return; }
@@ -579,7 +710,7 @@ function bindCommunity(){
   });
 }
 // the page re-renders #view; rebind when a community view is shown
-L.onAfterRender(()=>{ const v=document.getElementById("view"); if(v && ["comunidade","perfil","privacidade"].includes(L.S.view)){ delete v.dataset.cb; bindCommunity(); } if(L.S.view==="comunidade") drawCommunityMap(); });
+L.onAfterRender(entering=>{ const v=document.getElementById("view"); if(v && CVIEWS.includes(L.S.view)){ delete v.dataset.cb; bindCommunity(); } drawCommunityMap(entering); drawProfileMap(entering||C.pmapAnim); C.pmapAnim=false; });
 
 function goTo(alvo){
   const [tipo,id]=alvo.split(":"); C.open.add(alvo);
@@ -611,13 +742,17 @@ function vPerfil(){
       <div class="ph-text"><p class="eyebrow">${mine?"Seu perfil":"Perfil"}</p><h1 class="h1">${esc(p?p.nome:"…")} ${badge(uid)}</h1>
         <p class="small muted">${p&&p.cidade?esc(p.cidade):""}${p&&p.insta?`${p.cidade?" · ":""}<a href="https://instagram.com/${esc(p.insta)}" target="_blank" rel="noopener">@${esc(p.insta)}</a>`:""}</p>
         ${p&&p.bio?`<p class="lead" style="margin-top:10px">${esc(p.bio)}</p>`:""}
-        <div class="ph-stats"><span><b class="num">${fc?fc.seguidores:"–"}</b> ${fc&&fc.seguidores===1?"seguidor":"seguidores"}</span><span><b class="num">${fc?fc.seguindo:"–"}</b> seguindo</span><span><b class="num">${(p&&p.paises||[]).length}</b> ${(p&&p.paises||[]).length===1?"país":"países"}</span></div>
-        <div class="actions" style="margin-top:16px">${mine?`<button class="btn secondary" type="button" data-edit-me>Editar perfil</button><button class="btn plain" type="button" data-logout>Sair</button>`:followBtn(uid)}</div>
+        <div class="ph-stats"><span><b class="num">${fc?fc.seguidores:"–"}</b> ${fc&&fc.seguidores===1?"seguidor":"seguidores"}</span><span><b class="num">${fc?fc.seguindo:"–"}</b> seguindo</span><span><b class="num">${(p&&p.paises||[]).length}</b> ${(p&&p.paises||[]).length===1?"país":"países"}</span>${cidadesOf(p).length?`<span><b class="num">${cidadesOf(p).length}</b> ${cidadesOf(p).length===1?"cidade":"cidades"}</span>`:""}</div>
+        ${p&&p.proximo?`<p class="dest-to" style="margin-top:10px">✈︎ Próximo destino: <b>${esc(p.proximo)}</b></p>`:""}
+        <div class="actions" style="margin-top:16px">${mine?`<button class="btn secondary" type="button" data-edit-me>Editar perfil e mapa</button><button class="btn plain" type="button" data-logout>Sair</button>`:followBtn(uid)}${C.admins.has(uid)?`<a class="btn plain" href="#viagem">Ver a viagem</a>`:""}</div>
       </div>
     </div>
     ${mine && C.lastError?`<div class="verify-box"><strong>Algo não funcionou</strong><span class="small">${esc(C.lastError)}</span></div>`:""}
     ${mine && !C.verified?`<div class="verify-box"><strong>Confirme seu e-mail</strong><span class="small">Enviamos um link para ${esc(C.user.email||"")}. Depois de abrir, toque em "Já confirmei".</span><div class="actions"><button class="btn" type="button" data-reload>Já confirmei</button><button class="btn plain" type="button" data-verify>Reenviar</button></div></div>`:""}
+    ${p?`<div class="hoje-h">${profileMapHtml(uid,p)}</div>`:""}
+    ${mine && p && !(p.paises||[]).length && !cidadesOf(p).length?`<div class="empty-state hoje-h"><p class="h3">Monte o seu mapa</p><p class="small">Marque os países e as cidades que você já conheceu. Quem visitar o seu perfil vê o mapa.</p><p style="margin-top:12px"><button class="btn" type="button" data-edit-me>Marcar lugares</button></p></div>`:""}
     ${(p&&p.paises||[]).length?`<h2 class="h3 hoje-h">Países que já visitou</h2><div class="chips">${p.paises.map(a=>`<span class="chip"><span class="flag">${L.flag(a)}</span> ${esc(L.countryName(a))}</span>`).join("")}</div>`:""}
+    ${cidadesOf(p).length?`<h2 class="h3 hoje-h">Cidades</h2><div class="chips">${cidadesOf(p).slice().sort((a,b)=>a.n.localeCompare(b.n,"pt")).map(c=>`<span class="chip"><span class="flag">${L.flag(c.c)}</span> ${esc(c.n)}</span>`).join("")}</div>`:""}
     ${passportHtml(uid,p,mine)}
     ${(()=>{ const theirs=C.posts.filter(x=>x.uid===uid); return theirs.length?`<h2 class="h3 hoje-h">Publicações</h2><div class="posts">${theirs.map(postCard).join("")}</div>`:(mine?`<h2 class="h3 hoje-h">Publicações</h2><p class="small muted">Você ainda não publicou. <button type="button" class="link-btn small" data-new-post="post">Fazer a primeira publicação</button></p>`:""); })()}
     ${mine?wishlist(salvos):""}
@@ -649,6 +784,7 @@ function editProfile(){
   const me=C.me||{nome:C.user.displayName||"", insta:"", cidade:"", bio:"", paises:[], foto:googlePhoto(C.user)};
   let newAvatar = me.avatar||"";
   let paises=(me.paises||[]).slice();
+  let cidades=cidadesOf(me).map(c=>Object.assign({},c));
   const all=L.countryOptions().filter(o=>o[0]);
   const dlg=document.createElement("dialog"); dlg.className="sheet profile-sheet";
   dlg.innerHTML=`<form method="dialog" novalidate><header><h2 class="h3">Editar perfil</h2><button type="button" class="icon-btn" data-x aria-label="Fechar">✕</button></header>
@@ -662,6 +798,13 @@ function editProfile(){
         <div class="field"><label for="p-cidade">Onde mora</label><input type="text" id="p-cidade" maxlength="60" placeholder="Salvador, BA" value="${esc(me.cidade||"")}"></div>
       </div>
       <div class="field"><label for="p-bio">Sobre você</label><textarea id="p-bio" maxlength="280" rows="3" placeholder="Uma frase sobre você ou suas viagens">${esc(me.bio||"")}</textarea><span class="help"><span id="p-bio-n">${(me.bio||"").length}</span>/280</span></div>
+      <div class="field"><label for="p-prox">Próximo destino</label><input type="text" id="p-prox" maxlength="80" placeholder="Lisboa, dezembro de 2026" value="${esc(me.proximo||"")}"><span class="help">Aparece no seu perfil e no Início, em "Para onde a comunidade vai".</span></div>
+      <div class="field"><label for="p-cbusca">Cidades que já visitou <span class="tiny" id="p-ccount"></span></label>
+        <div class="chips" id="p-csel"></div>
+        <input type="search" id="p-cbusca" placeholder="Buscar cidade (ex.: Lisboa)" autocomplete="off">
+        <div class="pais-list city-list" id="p-clist" role="listbox" aria-label="Cidades" hidden></div>
+        <span class="help">O país da cidade é marcado sozinho.</span>
+      </div>
       <div class="field"><label for="p-busca">Países que já visitou <span class="tiny" id="p-count"></span></label>
         <div class="chips" id="p-sel"></div>
         <input type="search" id="p-busca" placeholder="Buscar país (ex.: Portugal)" autocomplete="off">
@@ -701,6 +844,30 @@ function editProfile(){
   };
   drawSel(); drawList();
   $d("#p-busca").addEventListener("input",drawList);
+  const ckey=c=>c.c+"|"+L.nrm(c.n)+"|"+L.nrm(c.s);
+  const drawCSel=()=>{
+    $d("#p-ccount").textContent = cidades.length ? `(${cidades.length})` : "";
+    $d("#p-csel").innerHTML = cidades.length ? cidades.map((c,i)=>`<button type="button" class="chip chip-x" data-crm="${i}" aria-label="Remover ${esc(c.n)}"><span class="flag">${L.flag(c.c)}</span> ${esc(c.n)} <span aria-hidden="true">×</span></button>`).join("") : `<span class="tiny">Busque e toque numa cidade para marcar.</span>`;
+  };
+  let found=[];
+  const drawCList=async()=>{
+    const q=$d("#p-cbusca").value.trim(); const box=$d("#p-clist");
+    if(q.length<2){ box.hidden=true; return; }
+    box.hidden=false;
+    if(!window.CITY_DATA){ box.innerHTML=`<p class="tiny" style="padding:10px">Carregando cidades…</p>`; await L.loadCities(); if($d("#p-cbusca").value.trim()!==q) return; }
+    found=L.searchCities(q,10);
+    box.innerHTML = found.length ? found.map((c,i)=>{ const st=L.stateName(c.c,c.s); const has=cidades.some(x=>ckey(x)===ckey({c:c.c,n:c.n,s:st}));
+      return `<button type="button" role="option" class="pais-opt" data-ci="${i}" aria-selected="${has}"><span class="flag">${L.flag(c.c)}</span><span class="pn">${esc(c.n)}<span class="tiny"> ${esc([st,L.countryName(c.c)].filter(Boolean).join(", "))}</span></span><span class="ck" aria-hidden="true">${has?"✓":""}</span></button>`; }).join("")
+      : `<p class="tiny" style="padding:10px">Nenhuma cidade com esse nome.</p>`;
+  };
+  drawCSel();
+  $d("#p-cbusca").addEventListener("input",drawCList);
+  $d("#p-clist").addEventListener("click",e=>{ const b=e.target.closest("[data-ci]"); if(!b) return; const c=found[+b.dataset.ci]; if(!c) return;
+    const item={n:c.n, c:c.c, s:L.stateName(c.c,c.s), la:+c.lat.toFixed(3), lo:+c.lng.toFixed(3)};
+    const i=cidades.findIndex(x=>ckey(x)===ckey(item));
+    if(i>=0) cidades.splice(i,1); else { if(cidades.length>=300){ toast("Limite de 300 cidades."); return; } cidades.push(item); if(!paises.includes(c.c)){ paises=paises.concat(c.c); drawSel(); drawList(); } }
+    drawCSel(); drawCList(); });
+  $d("#p-csel").addEventListener("click",e=>{ const b=e.target.closest("[data-crm]"); if(!b) return; cidades.splice(+b.dataset.crm,1); drawCSel(); if(!$d("#p-clist").hidden) drawCList(); });
   $d("#p-list").addEventListener("click",e=>{ const b=e.target.closest("[data-a]"); if(!b) return; const a=b.dataset.a;
     paises = paises.includes(a) ? paises.filter(x=>x!==a) : paises.concat(a);
     b.setAttribute("aria-selected",paises.includes(a)); b.querySelector(".ck").textContent=paises.includes(a)?"✓":""; drawSel(); });
@@ -709,16 +876,19 @@ function editProfile(){
     e.preventDefault();
     const nome=$d("#p-nome").value.trim(); const err=$d("#p-err");
     if(!nome){ err.textContent="Escreva seu nome."; err.hidden=false; $d("#p-nome").focus(); return; }
-    const data=cleanProfile({nome, insta:$d("#p-insta").value, cidade:$d("#p-cidade").value, bio:$d("#p-bio").value, paises, foto:me.foto, avatar:newAvatar});
+    const data=cleanProfile({nome, insta:$d("#p-insta").value, cidade:$d("#p-cidade").value, bio:$d("#p-bio").value, paises, foto:me.foto, avatar:newAvatar, cidades, proximo:$d("#p-prox").value});
     if(!C.me) data.criadoEm=TS();
     if(!newAvatar && me.avatar) data.avatar=firebase.firestore.FieldValue.delete();
+    if(!data.cidades && cidadesOf(me).length) data.cidades=firebase.firestore.FieldValue.delete();
+    if(!data.proximo && me.proximo) data.proximo=firebase.firestore.FieldValue.delete();
     const btn=$d("#p-save"); btn.disabled=true; btn.textContent="Salvando…"; err.hidden=true;
     try{
       await timed(db.collection("profiles").doc(C.user.uid).set(data,{merge:true}));
       const back = await timed(db.collection("profiles").doc(C.user.uid).get({source:"server"}));
       if(!back.exists || back.data().nome!==data.nome) throw {code:"not-saved"};
       if(nome!==C.user.displayName) C.user.updateProfile({displayName:nome}).catch(()=>{});
-      C.profiles[C.user.uid]=Object.assign({id:C.user.uid},C.me||{},data,{avatar:newAvatar||""});
+      C.profiles[C.user.uid]=Object.assign({id:C.user.uid},C.me||{},data,{avatar:newAvatar||"", cidades:data.cidades&&data.cidades.length!==undefined?data.cidades:[], proximo:typeof data.proximo==="string"?data.proximo:""});
+      C.pmapAnim=true;
       close(); toast("Perfil salvo"); L.render();
     }catch(x){ dbError(x,"salvar o perfil"); err.textContent=C.lastError; err.hidden=false; btn.disabled=false; btn.textContent="Salvar"; }
   };
@@ -764,7 +934,7 @@ function vPrivacidade(){
   return `<section class="band"><div class="wrap" style="max-width:720px">
     <p class="eyebrow">Privacidade</p><h1 class="h1">Seus dados na comunidade.</h1>
     <div class="gsec" style="margin-top:28px"><ul>
-      <li><strong>O que guardamos:</strong> seu nome, e-mail (só para login), foto do Google se você entrar com Google, e o que você escreve no perfil e nos comentários.</li>
+      <li><strong>O que guardamos:</strong> seu nome, e-mail (só para login), foto do Google se você entrar com Google, e o que você coloca no perfil (incluindo os países, as cidades e o próximo destino que você marcar), nas publicações e nos comentários.</li>
       <li><strong>Quem vê:</strong> nome, foto, perfil, publicações, comentários e quem você segue ficam visíveis para quem acessa o site. Seu e-mail e seus salvos não aparecem para ninguém.</li>
       <li><strong>Check-in:</strong> só é salvo quando você publica um. Guardamos a cidade e as coordenadas do centro dela, nunca a sua posição exata.</li>
       <li><strong>Onde fica:</strong> no Firebase, serviço do Google, usado para login e banco de dados.</li>
