@@ -1,5 +1,5 @@
 // Guarda o site no aparelho para abrir sem internet. Mude VERSAO a cada atualização.
-const VERSAO="lat53-login-20261027";
+const VERSAO="lat53-fundador-20261029";
 const ARQUIVOS=["./", "index.html", "app.css", "app.js", "maplib.js", "states.js", "world.js", "community.js", "vendor/firebase-app-compat.js", "vendor/firebase-auth-compat.js", "vendor/firebase-firestore-compat.js", "vendor/firebase-app-check-compat.js", "firebase-config.js", "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png", "icons/favicon.svg"];
 self.addEventListener("install",e=>{e.waitUntil(caches.open(VERSAO).then(c=>c.addAll(ARQUIVOS)).then(()=>self.skipWaiting()));});
 self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==VERSAO).map(k=>caches.delete(k)))).then(()=>self.clients.claim()));});
